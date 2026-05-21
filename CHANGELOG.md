@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.3] - 2026-05-21
+
+### Fixed
+- **README CI Badge Caching**: Appended cache-busting arguments to the GitHub Actions status badge in `README.md` to force pub.dev and browsers to fetch the newly passing (green) CI status.
+
 ## [0.5.2] - 2026-05-21
 
 ### Fixed

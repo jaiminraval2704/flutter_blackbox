@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "flutter_blackbox",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "dependencies": [
         "connectivity_plus",
         "device_info_plus",

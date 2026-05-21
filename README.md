@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_blackbox.svg)](https://pub.dev/packages/flutter_blackbox)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
+[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.5.3)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
 
 An all-in-one **In-App Debug & QA Overlay** for Flutter. One unified package to monitor network requests, inspect storage, track widget rebuilds, observe Socket.IO events, catch crashes, track performance, and generate comprehensive Markdown QA reports — all without modifying your existing code.
 
@@ -42,7 +42,7 @@ An all-in-one **In-App Debug & QA Overlay** for Flutter. One unified package to 
 
 ```yaml
 dependencies:
-  flutter_blackbox: ^0.5.2
+  flutter_blackbox: ^0.5.3
 ```
 
 ---
