@@ -308,9 +308,6 @@ class BlackBox {
 
     FlutterError.onError = (FlutterErrorDetails details) {
       if (_enabled) {
-        if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
-          print('BLACKBOX CAUGHT TEST ERROR: \${details.exceptionAsString()}');
-        }
         final now = DateTime.now();
         final crash = CrashEntry(
           id: 'crash_${_idCounter++}',

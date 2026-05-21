@@ -32,6 +32,7 @@
 /// );
 /// ```
 
+library;
 
 // ── Core public API ──────────────────────────────────────────────────────────
 export 'src/blackbox.dart';

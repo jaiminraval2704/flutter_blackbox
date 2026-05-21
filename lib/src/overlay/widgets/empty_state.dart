@@ -19,13 +19,14 @@ class _EmptyStateState extends State<EmptyState>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 2));
-    
+    _ctrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2));
+
     // Prevent infinite animations breaking tester.pumpAndSettle() in widget tests
     if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
       _ctrl.repeat(reverse: true);
     }
-    
+
     _anim = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.15))
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutSine));
   }
