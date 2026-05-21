@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2] - 2026-05-21
+
+### Fixed
+- **CI & Test Suite Stability**: Fixed an issue where the new infinite `AnimatedSize` and floating emoji animations were causing `flutter_test` timeouts (`pumpAndSettle`). Animations now correctly pause during widget testing environments.
+- **Strict Linting**: Fixed minor strict analyzer rules enforced by `flutter_lints ^6.0.0` (dangling doc comments, unused imports, print statements).
+- **GitHub Actions**: Fixed CI workflow to correctly run `dart format` and pass all strict static analysis checks.
+
 ## [0.5.1] - 2026-05-21
 
 ### Added
