@@ -1,8 +1,18 @@
 # Changelog
 
-## [0.5.1] - 2026-05-14
+## [0.5.1] - 2026-05-21
+
+### Added
+- **Gorgeous UI Animations**: Added buttery-smooth `AnimatedSize` transitions for expanding Network request JSON bodies, Socket event details, and Navigation route cards.
+- **Animated Empty States**: Upgraded all empty state screens (Network, Logs, Sockets, Navigation, Rebuilds, Storage) with subtle, floating emoji animations to dramatically improve the default UX.
+- **QA Panel Overhaul**: Ripped out the default `FilterChip` severity selectors and replaced them with fully custom `AnimatedContainer` buttons featuring smooth cross-fading text and vibrant, highly-visible background colors.
+- **Floating Button Breathing Animation**: Added a subtle, continuous scaling pulse ("breathing") animation to the draggable floating trigger button so it feels alive.
+
+### Changed
+- **Resizable Bottom Sheet**: The overlay now defaults to 85% screen height (resembling a native bottom sheet) rather than 100%. The new transparent top drag-handle lets users instantly snap the panel between 50% and 85% height.
 
 ### Fixed
+- **Maximum Pub Points**: Upgraded `flutter_lints` to `v6.0.0`, eliminated all minor lint warnings (like `unnecessary_library_name`), and verified a flawless 160/160 pub.dev score via the official `pana` engine.
 - Fixed relative image paths in `README.md` not resolving on pub.dev due to HTML `<img>` tag URL rewriting limitations. Replaced with absolute raw GitHub URLs.
 
 ## [0.5.0] - 2026-05-14

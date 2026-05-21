@@ -57,9 +57,17 @@ class _LogPanelState extends State<LogPanel> {
                   : all;
 
               final filteredList = filtered.toList(growable: false);
+              if (all.isEmpty) {
+                return const EmptyState(
+                    icon: Icons.article_outlined,
+                    label: 'No logs recorded yet',
+                    emoji: '📝');
+              }
               if (filteredList.isEmpty) {
                 return const EmptyState(
-                    icon: Icons.article_outlined, label: 'No logs yet');
+                    icon: Icons.search_off,
+                    label: 'No matches found',
+                    emoji: '🔍');
               }
 
               return ListView.builder(

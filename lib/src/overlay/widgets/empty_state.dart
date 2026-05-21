@@ -1,18 +1,52 @@
 import 'package:flutter/material.dart';
 
-class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.label});
+class EmptyState extends StatefulWidget {
+  const EmptyState(
+      {super.key, required this.icon, required this.label, this.emoji});
   final IconData icon;
   final String label;
+  final String? emoji;
+
+  @override
+  State<EmptyState> createState() => _EmptyStateState();
+}
+
+class _EmptyStateState extends State<EmptyState>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<Offset> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2))
+          ..repeat(reverse: true);
+    _anim = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.15))
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutSine));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white24, size: 32),
-            const SizedBox(height: 8),
-            Text(label,
+            if (widget.emoji != null)
+              SlideTransition(
+                position: _anim,
+                child:
+                    Text(widget.emoji!, style: const TextStyle(fontSize: 42)),
+              )
+            else
+              Icon(widget.icon, color: Colors.white24, size: 32),
+            const SizedBox(height: 12),
+            Text(widget.label,
                 style: const TextStyle(fontSize: 12, color: Colors.white38)),
           ],
         ),

@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "flutter_blackbox",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "dependencies": [
         "connectivity_plus",
         "device_info_plus",
@@ -24,7 +24,7 @@
     },
     {
       "name": "flutter_lints",
-      "version": "3.0.2",
+      "version": "6.0.0",
       "dependencies": [
         "lints"
       ]
@@ -159,7 +159,7 @@
     },
     {
       "name": "lints",
-      "version": "3.0.0",
+      "version": "6.1.0",
       "dependencies": []
     },
     {
@@ -390,7 +390,7 @@
     },
     {
       "name": "win32",
-      "version": "6.1.0",
+      "version": "6.2.0",
       "dependencies": [
         "code_assets",
         "crypto",
@@ -602,7 +602,7 @@
     },
     {
       "name": "vm_service",
-      "version": "15.1.0",
+      "version": "15.2.0",
       "dependencies": []
     },
     {

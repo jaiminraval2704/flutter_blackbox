@@ -123,9 +123,9 @@
     },
     {
       "name": "flutter_lints",
-      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/flutter_lints-3.0.2",
+      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/flutter_lints-6.0.0",
       "packageUri": "lib/",
-      "languageVersion": "3.1"
+      "languageVersion": "3.8"
     },
     {
       "name": "flutter_test",
@@ -183,9 +183,9 @@
     },
     {
       "name": "lints",
-      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/lints-3.0.0",
+      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/lints-6.1.0",
       "packageUri": "lib/",
-      "languageVersion": "3.0"
+      "languageVersion": "3.8"
     },
     {
       "name": "logging",
@@ -405,7 +405,7 @@
     },
     {
       "name": "vm_service",
-      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/vm_service-15.1.0",
+      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/vm_service-15.2.0",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
@@ -417,7 +417,7 @@
     },
     {
       "name": "win32",
-      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/win32-6.1.0",
+      "rootUri": "file:///Users/admin/.pub-cache/hosted/pub.dev/win32-6.2.0",
       "packageUri": "lib/",
       "languageVersion": "3.10"
     },

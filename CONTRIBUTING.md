@@ -31,7 +31,7 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
    ```
 3. **Add the upstream remote**:
    ```bash
-   git remote add upstream https://github.com/jaimincapermint/flutter_blackbox.git
+   git remote add upstream https://github.com/jaiminraval/flutter_blackbox.git
    ```
 
 ---
@@ -160,7 +160,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Reporting Bugs
 
-Use the [Bug Report template](https://github.com/jaimincapermint/flutter_blackbox/issues/new?template=bug_report.md) and include:
+Use the [Bug Report template](https://github.com/jaiminraval/flutter_blackbox/issues/new?template=bug_report.md) and include:
 
 - Flutter/Dart version (`flutter --version`)
 - BlackBox version
@@ -172,7 +172,7 @@ Use the [Bug Report template](https://github.com/jaimincapermint/flutter_blackbo
 
 ## Suggesting Features
 
-Use the [Feature Request template](https://github.com/jaimincapermint/flutter_blackbox/issues/new?template=feature_request.md) and include:
+Use the [Feature Request template](https://github.com/jaiminraval/flutter_blackbox/issues/new?template=feature_request.md) and include:
 
 - Clear description of the feature
 - Use case / problem it solves
@@ -182,7 +182,7 @@ Use the [Feature Request template](https://github.com/jaimincapermint/flutter_bl
 
 ## 💡 Good First Issues
 
-Look for issues tagged with [`good first issue`](https://github.com/jaimincapermint/flutter_blackbox/labels/good%20first%20issue) — these are great starting points for new contributors!
+Look for issues tagged with [`good first issue`](https://github.com/jaiminraval/flutter_blackbox/labels/good%20first%20issue) — these are great starting points for new contributors!
 
 ---
 

@@ -291,7 +291,9 @@ class _StoragePanelState extends State<StoragePanel> {
                   child: CircularProgressIndicator(color: Colors.white38))
               : filteredEntries.isEmpty
                   ? const EmptyState(
-                      icon: Icons.storage_outlined, label: 'No stored data')
+                      icon: Icons.search_off,
+                      label: 'No keys found',
+                      emoji: '🗄️')
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                       itemCount: filteredEntries.length,

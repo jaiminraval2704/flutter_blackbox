@@ -159,7 +159,9 @@ class _RebuildPanelState extends State<RebuildPanel> {
         Expanded(
           child: entries.isEmpty
               ? const EmptyState(
-                  icon: Icons.refresh, label: 'No rebuild data yet')
+                  icon: Icons.refresh,
+                  label: 'No rebuild data yet',
+                  emoji: '♻️')
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                   itemCount: entries.length,

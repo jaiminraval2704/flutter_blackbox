@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../blackbox.dart';
 import 'blackbox_trigger.dart';
 import 'panels/log_panel.dart';
+import 'panels/navigation_panel.dart';
 import 'panels/network_panel.dart';
 import 'panels/performance_panel.dart';
 import 'panels/rebuild_panel.dart';
@@ -14,6 +15,7 @@ import 'panels/socket_panel.dart';
 import 'panels/storage_panel.dart';
 import 'panels/device_panel.dart';
 import 'panels/qa_panel.dart';
+import 'widgets/blackbox_theme.dart';
 
 /// Wrap your [MaterialApp] (or [CupertinoApp]) with this widget.
 ///
@@ -31,6 +33,22 @@ class BlackBoxOverlay extends StatefulWidget {
   /// The root application widget (usually your [MaterialApp]).
   final Widget child;
 
+  /// A builder method to guarantee correct widget nesting order natively.
+  /// Pass this directly to [MaterialApp.builder] or [CupertinoApp.builder].
+  ///
+  /// ```dart
+  /// MaterialApp(
+  ///   builder: BlackBoxOverlay.builder(),
+  /// )
+  /// ```
+  static Widget Function(BuildContext, Widget?) builder() {
+    return (BuildContext context, Widget? child) {
+      return BlackBoxOverlay(
+        child: child ?? const SizedBox.shrink(),
+      );
+    };
+  }
+
   @override
   State<BlackBoxOverlay> createState() => _BlackBoxOverlayState();
 }
@@ -40,7 +58,17 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
   bool _isVisible = false;
   final _repaintKey = GlobalKey();
   late final AnimationController _animController;
+
+  // ── Resizable panel state ─────────────────────────────────────────
+  final _panelHeightFraction = ValueNotifier<double>(0.85);
   late final Animation<double> _fadeAnimation;
+
+  // A stable global key for the internal navigator.
+  // This prevents the navigator (and its internal Overlay/OverlayEntry items)
+  // from being needlessly destroyed and recreated during parent rebuilds
+  // (such as when the keyboard opens/closes triggering a MediaQuery update).
+  static final GlobalKey<NavigatorState> _navigatorKey =
+      GlobalKey<NavigatorState>();
 
   // Stored handler reference for cleanup.
   KeyEventCallback? _keyHandler;
@@ -140,6 +168,7 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
 
   @override
   void dispose() {
+    _panelHeightFraction.dispose();
     if (_keyHandler != null) {
       HardwareKeyboard.instance.removeHandler(_keyHandler!);
       _keyHandler = null;
@@ -153,28 +182,29 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
     if (!BlackBox.instance.isEnabled) return widget.child;
 
     final trigger = BlackBox.instance.trigger;
+    final themeData = BlackBox.instance.theme;
 
     return Directionality(
       textDirection: TextDirection.ltr,
-      child: Stack(
-        children: [
-          // ── App content wrapped in RepaintBoundary for screenshots ──
-          RepaintBoundary(
-            key: _repaintKey,
-            child: widget.child,
-          ),
-
-          // ── Floating button trigger ──────────────────────────────────
-          if (trigger is FloatingButtonTrigger)
-            Positioned(
-              right: 16,
-              bottom: 80,
-              child: _FloatingTriggerButton(onTap: _toggle),
+      child: BlackBoxTheme(
+        data: themeData,
+        child: Stack(
+          children: [
+            // ── App content wrapped in RepaintBoundary for screenshots ──
+            RepaintBoundary(
+              key: _repaintKey,
+              child: widget.child,
             ),
 
-          // ── The Overlay Panel ────────────────────────────────────────
-          Positioned.fill(
-            child: Offstage(
+            // ── Floating button trigger (draggable) ─────────────────────
+            if (trigger is FloatingButtonTrigger)
+              _DraggableFloatingButton(
+                onTap: _toggle,
+                accentColor: themeData.accentColor,
+              ),
+
+            // ── The Overlay Panel ──────────────────────────────────────
+            Offstage(
               offstage: !_isVisible && !_animController.isAnimating,
               child: IgnorePointer(
                 ignoring: !_isVisible && !_animController.isAnimating,
@@ -188,15 +218,15 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
                     color: Colors.transparent,
                     child: HeroControllerScope.none(
                       child: Navigator(
+                        key: _navigatorKey,
                         onGenerateRoute: (_) => PageRouteBuilder(
                           opaque: false,
                           pageBuilder: (context, _, __) => FadeTransition(
                             opacity: _fadeAnimation,
-                            child: Scaffold(
-                              backgroundColor: Colors.transparent,
-                              body: _BlackBoxPanel(
-                                  onClose: _close,
-                                  captureScreen: _captureScreen),
+                            child: _ResizablePanel(
+                              heightFraction: _panelHeightFraction,
+                              onClose: _close,
+                              captureScreen: _captureScreen,
                             ),
                           ),
                         ),
@@ -206,8 +236,102 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resizable panel wrapper — drag handle + backdrop
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ResizablePanel extends StatelessWidget {
+  const _ResizablePanel({
+    required this.heightFraction,
+    required this.onClose,
+    required this.captureScreen,
+  });
+
+  final ValueNotifier<double> heightFraction;
+  final VoidCallback onClose;
+  final Future<List<int>?> Function() captureScreen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = BlackBoxTheme.of(context);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ValueListenableBuilder<double>(
+        valueListenable: heightFraction,
+        builder: (context, fraction, child) {
+          return Stack(
+            children: [
+              // ── Semi-transparent backdrop ──
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: onClose,
+                  child: Container(
+                    color:
+                        theme.backdropColor.withValues(alpha: fraction * 0.5),
+                  ),
+                ),
+              ),
+              // ── Panel positioned at the bottom ──
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: screenHeight * fraction,
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      // ── Drag handle ──
+                      GestureDetector(
+                        onVerticalDragUpdate: (details) {
+                          final delta = -details.delta.dy / screenHeight;
+                          final newFraction =
+                              (fraction + delta).clamp(0.3, 1.0);
+                          heightFraction.value = newFraction;
+                        },
+                        onDoubleTap: () {
+                          heightFraction.value = fraction < 0.75 ? 0.85 : 0.5;
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          color: Colors.transparent,
+                          child: Center(
+                            child: Container(
+                              width: 40,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: theme.dragHandleColor,
+                                borderRadius: BorderRadius.circular(2.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // ── Panel body ──
+                      Expanded(
+                        child: child!,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+        child: _BlackBoxPanel(
+          onClose: onClose,
+          captureScreen: captureScreen,
+        ),
       ),
     );
   }
@@ -236,21 +360,63 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
 
   bool _isSearching = false;
 
-  static const _tabs = [
-    (icon: Icons.wifi, label: 'Network'),
-    (icon: Icons.article_outlined, label: 'Logs'),
-    (icon: Icons.speed, label: 'Perf'),
-    (icon: Icons.refresh, label: 'Rebuilds'),
-    (icon: Icons.storage_outlined, label: 'Storage'),
-    (icon: Icons.power, label: 'Socket IO'),
-    (icon: Icons.phone_android, label: 'Device'),
-    (icon: Icons.bug_report_outlined, label: 'QA'),
-  ];
+  late final List<({IconData icon, String label})> _filteredTabs;
+  late final List<Widget Function()> _filteredViews;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
+
+    final hasStorage = BlackBox.instance.storageAdapters.isNotEmpty;
+    final hasSockets = BlackBox.instance.socketAdapters.isNotEmpty;
+
+    final allTabs = [
+      (icon: Icons.wifi, label: 'Network', view: () => const NetworkPanel()),
+      (
+        icon: Icons.article_outlined,
+        label: 'Logs',
+        view: () => const LogPanel()
+      ),
+      (icon: Icons.speed, label: 'Perf', view: () => const PerformancePanel()),
+      (
+        icon: Icons.refresh,
+        label: 'Rebuilds',
+        view: () => const RebuildPanel()
+      ),
+      if (hasStorage)
+        (
+          icon: Icons.storage_outlined,
+          label: 'Storage',
+          view: () => const StoragePanel()
+        ),
+      if (BlackBox.journeyObserver.navigator != null)
+        (
+          icon: Icons.route,
+          label: 'Routes',
+          view: () => const NavigationPanel()
+        ),
+      if (hasSockets)
+        (
+          icon: Icons.power,
+          label: 'Socket IO',
+          view: () => const SocketPanel()
+        ),
+      (
+        icon: Icons.phone_android,
+        label: 'Device',
+        view: () => const DevicePanel()
+      ),
+      (
+        icon: Icons.bug_report_outlined,
+        label: 'QA',
+        view: () => QaPanel(captureScreen: widget.captureScreen)
+      ),
+    ];
+
+    _filteredTabs = allTabs.map((t) => (icon: t.icon, label: t.label)).toList();
+    _filteredViews = allTabs.map((t) => t.view).toList();
+
+    _tabController = TabController(length: _filteredTabs.length, vsync: this);
   }
 
   @override
@@ -264,14 +430,15 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
     return Material(
       color: Colors.transparent,
       child: SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Column(
             children: [
               // ── Header ───────────────────────────────────────────────
               _PanelHeader(
                 tabController: _tabController,
-                tabs: _tabs,
+                tabs: _filteredTabs,
                 onClose: widget.onClose,
                 isSearching: _isSearching,
                 onSearchToggle: () {
@@ -288,17 +455,7 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
                           listenable: _tabController,
                           builder: (context, _) => _LazyIndexedStack(
                             index: _tabController.index,
-                            children: [
-                              () => const NetworkPanel(),
-                              () => const LogPanel(),
-                              () => const PerformancePanel(),
-                              () => const RebuildPanel(),
-                              () => const StoragePanel(),
-                              () => const SocketPanel(),
-                              () => const DevicePanel(),
-                              () =>
-                                  QaPanel(captureScreen: widget.captureScreen),
-                            ],
+                            children: _filteredViews,
                           ),
                         ),
                 ),
@@ -332,9 +489,11 @@ class _PanelHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = BlackBoxTheme.of(context);
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: theme.headerBackground,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -343,13 +502,13 @@ class _PanelHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
-                const _BlackBoxBadge(),
+                _BlackBoxBadge(theme: theme),
                 const Spacer(),
                 IconButton(
                   icon: Icon(
                     isSearching ? Icons.search_off : Icons.search,
                     color:
-                        isSearching ? const Color(0xFF6C63FF) : Colors.white70,
+                        isSearching ? theme.accentColor : theme.textSecondary,
                     size: 18,
                   ),
                   onPressed: onSearchToggle,
@@ -358,8 +517,7 @@ class _PanelHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 IconButton(
-                  icon:
-                      const Icon(Icons.close, color: Colors.white70, size: 18),
+                  icon: Icon(Icons.close, color: theme.textSecondary, size: 18),
                   onPressed: onClose,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -371,9 +529,9 @@ class _PanelHeader extends StatelessWidget {
             TabBar(
               controller: tabController,
               isScrollable: true,
-              indicatorColor: const Color(0xFF6C63FF),
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white38,
+              indicatorColor: theme.accentColor,
+              labelColor: theme.textPrimary,
+              unselectedLabelColor: theme.textMuted,
               labelStyle:
                   const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
               tabAlignment: TabAlignment.start,
@@ -431,11 +589,12 @@ class _PanelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = BlackBoxTheme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF12121F),
+        color: theme.cardBackground,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: theme.borderColor),
       ),
       clipBehavior: Clip.antiAlias,
       child: child,
@@ -444,14 +603,15 @@ class _PanelCard extends StatelessWidget {
 }
 
 class _BlackBoxBadge extends StatelessWidget {
-  const _BlackBoxBadge();
+  const _BlackBoxBadge({required this.theme});
+  final BlackBoxThemeData theme;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFF6C63FF),
+        color: theme.badgeColor,
         borderRadius: BorderRadius.circular(6),
       ),
       child: const Text(
@@ -467,33 +627,101 @@ class _BlackBoxBadge extends StatelessWidget {
   }
 }
 
-class _FloatingTriggerButton extends StatelessWidget {
-  const _FloatingTriggerButton({required this.onTap});
+class _DraggableFloatingButton extends StatefulWidget {
+  const _DraggableFloatingButton({
+    required this.onTap,
+    required this.accentColor,
+  });
   final VoidCallback onTap;
+  final Color accentColor;
+
+  @override
+  State<_DraggableFloatingButton> createState() =>
+      _DraggableFloatingButtonState();
+}
+
+class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
+    with SingleTickerProviderStateMixin {
+  // Position stored as offsets from bottom-right corner.
+  double _right = 16;
+  double _bottom = 80;
+  bool _isDragging = false;
+
+  late final AnimationController _ctrl;
+  late final Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat(reverse: true);
+    _scaleAnim = Tween<double>(begin: 1.0, end: 1.1)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerUp: (_) => onTap(),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFF6C63FF),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6C63FF).withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+    final screenSize = MediaQuery.of(context).size;
+    const buttonSize = 40.0;
+
+    return Positioned(
+      right: _right.clamp(4.0, screenSize.width - buttonSize - 4),
+      bottom: _bottom.clamp(4.0, screenSize.height - buttonSize - 4),
+      child: GestureDetector(
+        onPanStart: (_) => _isDragging = false,
+        onPanUpdate: (details) {
+          _isDragging = true;
+          setState(() {
+            _right -= details.delta.dx;
+            _bottom -= details.delta.dy;
+          });
+        },
+        onPanEnd: (_) {
+          // Snap to nearest horizontal edge
+          final center = screenSize.width - _right - buttonSize / 2;
+          setState(() {
+            _right = center < screenSize.width / 2
+                ? screenSize.width - buttonSize - 4
+                : 4;
+          });
+          _isDragging = false;
+        },
+        onPanCancel: () {
+          _isDragging = false;
+        },
+        onTap: () {
+          if (!_isDragging) widget.onTap();
+          _isDragging = false;
+        },
+        child: ScaleTransition(
+          scale: _scaleAnim,
+          child: Container(
+            width: buttonSize,
+            height: buttonSize,
+            decoration: BoxDecoration(
+              color: widget.accentColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accentColor.withValues(alpha: 0.4),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: const Icon(
-          Icons.bug_report,
-          color: Colors.white,
-          size: 20,
+            child: const Icon(
+              Icons.bug_report,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
         ),
       ),
     );
@@ -510,7 +738,7 @@ class _LazyIndexedStack extends StatefulWidget {
 }
 
 class _LazyIndexedStackState extends State<_LazyIndexedStack> {
-  late final List<Widget?> _built;
+  late List<Widget?> _built;
 
   @override
   void initState() {
@@ -522,6 +750,16 @@ class _LazyIndexedStackState extends State<_LazyIndexedStack> {
   @override
   void didUpdateWidget(_LazyIndexedStack oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_built.length != widget.children.length) {
+      final newBuilt = List<Widget?>.filled(widget.children.length, null);
+      final minLength = _built.length < widget.children.length
+          ? _built.length
+          : widget.children.length;
+      for (int i = 0; i < minLength; i++) {
+        newBuilt[i] = _built[i];
+      }
+      _built = newBuilt;
+    }
     if (_built[widget.index] == null) {
       _built[widget.index] = widget.children[widget.index]();
     }
@@ -529,11 +767,22 @@ class _LazyIndexedStackState extends State<_LazyIndexedStack> {
 
   @override
   Widget build(BuildContext context) {
-    return IndexedStack(
-      index: widget.index,
+    return Stack(
       children: [
         for (int i = 0; i < widget.children.length; i++)
-          _built[i] ?? const SizedBox.shrink(),
+          if (_built[i] != null)
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              opacity: widget.index == i ? 1.0 : 0.0,
+              child: IgnorePointer(
+                ignoring: widget.index != i,
+                child: TickerMode(
+                  enabled: widget.index == i,
+                  child: _built[i]!,
+                ),
+              ),
+            ),
       ],
     );
   }

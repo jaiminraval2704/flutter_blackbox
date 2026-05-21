@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'network_redactor.dart';
 import 'network_request.dart';
 import 'network_response.dart';
 
@@ -18,9 +19,13 @@ class NetworkEntry {
 /// Stores the last [capacity] network entries and exposes them as a
 /// broadcast [Stream].
 class NetworkStore {
-  NetworkStore({this.capacity = 50});
+  NetworkStore({this.capacity = 50, this.redactor});
 
   final int capacity;
+
+  /// Optional redactor for sanitising sensitive data before storage.
+  final NetworkRedactor? redactor;
+
   final _entries = ListQueue<NetworkEntry>();
   final _index = <String, NetworkEntry>{};
   final _controller = StreamController<List<NetworkEntry>>.broadcast();
@@ -42,7 +47,22 @@ class NetworkStore {
       final removed = _entries.removeFirst();
       _index.remove(removed.request.id);
     }
-    final entry = NetworkEntry(request: request);
+
+    // Redact sensitive fields before storing
+    final storedRequest = redactor != null
+        ? NetworkRequest(
+            id: request.id,
+            method: request.method,
+            url: request.url,
+            timestamp: request.timestamp,
+            headers: redactor!.redactHeaders(request.headers),
+            body: redactor!.redactBody(request.body),
+            queryParameters: request.queryParameters,
+            isReplay: request.isReplay,
+          )
+        : request;
+
+    final entry = NetworkEntry(request: storedRequest);
     _entries.addLast(entry);
     _index[request.id] = entry;
     _invalidateAndNotify();
@@ -53,7 +73,20 @@ class NetworkStore {
   void onResponse(NetworkResponse response) {
     final entry = _index[response.requestId];
     if (entry != null) {
-      entry.response = response;
+      // Redact response body before storing
+      if (redactor != null) {
+        entry.response = NetworkResponse(
+          requestId: response.requestId,
+          statusCode: response.statusCode,
+          headers: response.headers,
+          body: redactor!.redactBody(response.body),
+          durationMs: response.durationMs,
+          failureType: response.failureType,
+          responseSizeBytes: response.responseSizeBytes,
+        );
+      } else {
+        entry.response = response;
+      }
       _invalidateAndNotify();
     }
   }

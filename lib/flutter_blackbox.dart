@@ -31,7 +31,7 @@
 ///   enabled: kDebugMode,
 /// );
 /// ```
-library flutter_blackbox;
+
 
 // ── Core public API ──────────────────────────────────────────────────────────
 export 'src/blackbox.dart';
@@ -39,6 +39,7 @@ export 'src/blackbox.dart';
 // ── Overlay ──────────────────────────────────────────────────────────────────
 export 'src/overlay/blackbox_overlay.dart';
 export 'src/overlay/blackbox_trigger.dart';
+export 'src/overlay/widgets/blackbox_theme.dart';
 
 // ── Models ───────────────────────────────────────────────────────────────────
 export 'src/core/log/log_entry.dart';
@@ -57,6 +58,13 @@ export 'src/core/rebuild/rebuild_tracker_widget.dart';
 export 'src/core/performance/fps_monitor.dart';
 export 'src/core/report/blackbox_report.dart';
 export 'src/core/report/blackbox_device_info.dart';
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+export 'src/core/journey/navigation_store.dart';
+
+// ── Network Utilities ────────────────────────────────────────────────────────
+export 'src/core/network/network_redactor.dart';
+export 'src/core/network/network_replayer.dart';
 
 // ── Adapter interfaces (no external deps) ────────────────────────────────────
 export 'src/adapters/http/blackbox_http_adapter.dart';

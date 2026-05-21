@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_blackbox.svg)](https://pub.dev/packages/flutter_blackbox)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/jaimincapermint/flutter_blackbox/actions/workflows/ci.yml/badge.svg)](https://github.com/jaimincapermint/flutter_blackbox/actions/workflows/ci.yml)
+[![CI](https://github.com/jaiminraval/flutter_blackbox/actions/workflows/ci.yml/badge.svg)](https://github.com/jaiminraval/flutter_blackbox/actions/workflows/ci.yml)
 
 An all-in-one **In-App Debug & QA Overlay** for Flutter. One unified package to monitor network requests, inspect storage, track widget rebuilds, observe Socket.IO events, catch crashes, track performance, and generate comprehensive Markdown QA reports — all without modifying your existing code.
 
@@ -13,9 +13,9 @@ An all-in-one **In-App Debug & QA Overlay** for Flutter. One unified package to 
 > **Observe Only, Never Modify**: BlackBox hooks into your existing libraries (Dio, http, Socket.IO, SharedPreferences) through their built-in extension points. Your trusted code stays completely untouched.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jaimincapermint/flutter_blackbox/main/assets/network_panel.png" width="300" alt="Network Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval/flutter_blackbox/main/assets/network_panel.png" width="300" alt="Network Panel" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://raw.githubusercontent.com/jaimincapermint/flutter_blackbox/main/assets/perf_panel.png" width="300" alt="Performance Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval/flutter_blackbox/main/assets/perf_panel.png" width="300" alt="Performance Panel" />
 </p>
 
 ---

@@ -127,7 +127,14 @@ class _SocketTileState extends State<_SocketTile> {
               ],
             ),
           ),
-          if (_expanded) _SocketDetail(event: event),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? _SocketDetail(event: event)
+                : const SizedBox(width: double.infinity),
+          ),
           const Divider(color: Colors.white10, height: 1),
         ],
       ),

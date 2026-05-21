@@ -223,20 +223,35 @@ class _QaPanelState extends State<QaPanel> {
             spacing: 8,
             children: BugSeverity.values.map((s) {
               final isSelected = _selectedSeverity == s;
-              return FilterChip(
-                label: Text(s.name.toUpperCase(),
+              return GestureDetector(
+                onTap: () => setState(() => _selectedSeverity = s),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF6C63FF).withValues(alpha: 0.8)
+                        : Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF6C63FF)
+                            : Colors.white10,
+                        width: 0.5),
+                  ),
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
                     style: TextStyle(
                         fontSize: 10,
-                        color: isSelected ? Colors.white : Colors.white54)),
-                selected: isSelected,
-                onSelected: (val) {
-                  if (val) setState(() => _selectedSeverity = s);
-                },
-                backgroundColor: Colors.white.withValues(alpha: 0.04),
-                selectedColor: const Color(0xFF6C63FF).withValues(alpha: 0.8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: const BorderSide(color: Colors.white10, width: 0.5)),
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? Colors.white : Colors.white60),
+                    child: Text(s.name.toUpperCase()),
+                  ),
+                ),
               );
             }).toList(),
           ),

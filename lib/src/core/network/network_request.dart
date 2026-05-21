@@ -8,6 +8,7 @@ class NetworkRequest {
     this.headers = const {},
     this.body,
     this.queryParameters = const {},
+    this.isReplay = false,
   });
 
   /// Unique identifier for the network request.
@@ -31,6 +32,9 @@ class NetworkRequest {
   /// URL query parameters.
   final Map<String, String> queryParameters;
 
+  /// Whether this request was replayed from the Network panel.
+  final bool isReplay;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'method': method,
@@ -39,5 +43,6 @@ class NetworkRequest {
         'headers': headers,
         if (body != null) 'body': body,
         if (queryParameters.isNotEmpty) 'queryParameters': queryParameters,
+        if (isReplay) 'isReplay': true,
       };
 }

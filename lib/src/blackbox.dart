@@ -21,11 +21,13 @@ import 'core/crash/crash_store.dart';
 import 'core/journey/blackbox_navigator_observer.dart';
 import 'core/journey/journey_event.dart';
 import 'core/journey/journey_store.dart';
+import 'core/journey/navigation_store.dart';
 import 'core/log/log_entry.dart';
 import 'core/log/log_level.dart';
 import 'core/log/log_store.dart';
 import 'core/network/mock_engine.dart';
 import 'core/network/mock_response.dart';
+import 'core/network/network_redactor.dart';
 import 'core/network/network_store.dart';
 import 'core/network/network_response.dart';
 import 'core/performance/fps_monitor.dart';
@@ -34,6 +36,7 @@ import 'core/report/blackbox_report.dart';
 import 'core/socket/socket_event.dart';
 import 'core/socket/socket_store.dart';
 import 'overlay/blackbox_trigger.dart';
+import 'overlay/widgets/blackbox_theme.dart';
 
 /// Central singleton that owns all BlackBox stores and wires adapters.
 ///
@@ -64,7 +67,9 @@ class BlackBox {
   final logStore = LogStore();
 
   /// Store for intercepted network requests.
-  final networkStore = NetworkStore();
+  ///
+  /// Re-created in [setup] when a [NetworkRedactor] is provided.
+  NetworkStore networkStore = NetworkStore();
 
   /// Engine for mocking network responses based on URL patterns.
   final mockEngine = MockEngine();
@@ -77,6 +82,9 @@ class BlackBox {
 
   /// Store for user navigation and interaction journey.
   final journeyStore = JourneyStore();
+
+  /// Store for route navigation history with arguments.
+  final navigationStore = NavigationStore();
 
   /// Store for intercepted Socket.IO events.
   final socketStore = SocketStore();
@@ -111,16 +119,20 @@ class BlackBox {
   /// Whether the auto-rebuild tracking is currently active.
   bool get isAutoRebuildTrackingEnabled => _autoRebuildTracking;
 
-  /// A [NavigatorObserver] that logs navigation events to the [journeyStore].
+  /// A [NavigatorObserver] that logs navigation events to the [journeyStore]
+  /// and [navigationStore].
   /// Add this to your [MaterialApp.navigatorObservers].
-  static final journeyObserver =
-      BlackBoxNavigatorObserver(_instance.journeyStore);
+  static final journeyObserver = BlackBoxNavigatorObserver(
+    _instance.journeyStore,
+    navigationStore: _instance.navigationStore,
+  );
 
   // ── Configuration ────────────────────────────────────────────────────
 
   bool _enabled = kDebugMode;
   bool _redactSensitiveData = true;
   BlackBoxTrigger _trigger = const BlackBoxTrigger.shake();
+  BlackBoxThemeData _theme = const BlackBoxThemeData.dark();
   final List<BlackBoxHttpAdapter> _httpAdapters = [];
   final List<BlackBoxSocketAdapter> _socketAdapters = [];
   BlackBoxLogAdapter? _logAdapter;
@@ -135,8 +147,15 @@ class BlackBox {
   List<BlackBoxStorageAdapter> get storageAdapters =>
       List.unmodifiable(_storageAdapters);
 
+  /// Registered socket adapters (e.g., Socket.IO).
+  List<BlackBoxSocketAdapter> get socketAdapters =>
+      List.unmodifiable(_socketAdapters);
+
   /// Current trigger used to open the overlay.
   BlackBoxTrigger get trigger => _trigger;
+
+  /// Current theme for the overlay UI.
+  BlackBoxThemeData get theme => _theme;
 
   /// Registered network adapters (e.g., Dio, dart:http).
   List<BlackBoxHttpAdapter> get httpAdapters =>
@@ -168,9 +187,11 @@ class BlackBox {
   /// [storageAdapters] - List of [BlackBoxStorageAdapter] to inspect app storage.
   /// [observers] - List of [BlackBoxObserver] to forward events to external services (Crashlytics, Sentry, etc.).
   /// [trigger] - How to open the overlay. Defaults to [BlackBoxTrigger.shake].
+  /// [theme] - Custom theme for the overlay UI. Defaults to [BlackBoxThemeData.dark].
   /// [ignoredRebuildWidgets] - List of widget names to exclude from rebuild tracking.
   /// [enabled] - If the library should be active. Defaults to [kDebugMode].
-  /// [redactSensitiveData] - Whether to mask sensitive keys in storage panels.
+  /// [redactSensitiveData] - Whether to mask sensitive keys in storage and network panels.
+  /// [networkRedactor] - Custom redactor for network payload sanitisation.
   /// [maxRebuildTrackCount] - Maximum unique widgets to track rebuilds for. Defaults to 500.
   static void setup({
     List<BlackBoxHttpAdapter> httpAdapters = const [],
@@ -179,7 +200,9 @@ class BlackBox {
     List<BlackBoxStorageAdapter> storageAdapters = const [],
     List<BlackBoxObserver> observers = const [],
     BlackBoxTrigger trigger = const BlackBoxTrigger.shake(),
+    BlackBoxThemeData theme = const BlackBoxThemeData.dark(),
     List<String> ignoredRebuildWidgets = const [],
+    NetworkRedactor? networkRedactor,
     bool? enabled,
     bool redactSensitiveData = true,
     int maxRebuildTrackCount = 500,
@@ -203,7 +226,23 @@ class BlackBox {
 
     dk._enabled = enabled ?? kDebugMode;
     dk._redactSensitiveData = redactSensitiveData;
+    dk._theme = theme;
     dk.rebuildStore.capacity = maxRebuildTrackCount;
+
+    // ── Network store with optional redactor ───────────────────────────
+    dk.networkStore.dispose();
+    final effectiveRedactor =
+        redactSensitiveData ? (networkRedactor ?? NetworkRedactor()) : null;
+    dk.networkStore = NetworkStore(redactor: effectiveRedactor);
+
+    // Clear all other stores to prevent memory buildup / data bleed between setup runs (e.g. across unit tests)
+    dk.logStore.clear();
+    dk.crashStore.clear();
+    dk.socketStore.clear();
+    dk.rebuildStore.reset();
+    dk.navigationStore.clear();
+    dk.journeyStore.clear();
+
     dk._trigger = trigger;
     if (ignoredRebuildWidgets.isNotEmpty) {
       _ignoredWidgets.addAll(ignoredRebuildWidgets);
@@ -576,6 +615,7 @@ class BlackBox {
     dk.crashStore.dispose();
     dk.socketStore.dispose();
     dk.rebuildStore.dispose();
+    dk.navigationStore.dispose();
     dk.journeyStore.clear();
     dk._httpAdapters.clear();
     dk._socketAdapters.clear();

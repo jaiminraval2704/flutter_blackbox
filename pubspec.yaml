@@ -1,11 +1,11 @@
 name: flutter_blackbox
 description: All-in-one in-app debug overlay for Flutter. Network inspector, API mocking, live logs, FPS monitor, rebuild tracker, storage inspector, crash reports, and QA tools.
 version: 0.5.1
-homepage: https://github.com/jaimincapermint/flutter_blackbox
-repository: https://github.com/jaimincapermint/flutter_blackbox
-issue_tracker: https://github.com/jaimincapermint/flutter_blackbox/issues
+homepage: https://github.com/jaiminraval/flutter_blackbox
+repository: https://github.com/jaiminraval/flutter_blackbox
+issue_tracker: https://github.com/jaiminraval/flutter_blackbox/issues
 funding:
-  - https://github.com/sponsors/jaimincapermint
+  - https://github.com/sponsors/jaiminraval
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -28,7 +28,7 @@ dev_dependencies:
   socket_io_client: ^3.0.2
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 topics:
   - debug

@@ -7,6 +7,7 @@ import '../../core/network/network_store.dart';
 import '../../core/network/network_request.dart';
 import '../../core/network/network_response.dart';
 import '../../core/network/network_throttle.dart';
+import '../../core/network/network_replayer.dart';
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
 import '../widgets/empty_state.dart';
@@ -238,11 +239,13 @@ class _NetworkPanelState extends State<NetworkPanel> {
         // ── Request list ─────────────────────────────────────────────
         Expanded(
           child: _entries.isEmpty
-              ? const EmptyState(icon: Icons.wifi_off, label: 'No requests yet')
+              ? const EmptyState(
+                  icon: Icons.wifi_off, label: 'No requests yet', emoji: '🕸️')
               : filtered.isEmpty
                   ? const EmptyState(
                       icon: Icons.filter_alt_off,
-                      label: 'No requests match filters')
+                      label: 'No requests match filters',
+                      emoji: '🔍')
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -474,6 +477,25 @@ class _NetworkTileState extends State<_NetworkTile> {
             child: Row(
               children: [
                 _MethodBadge(method: req.method),
+                if (req.isReplay) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text(
+                      'REPLAY',
+                      style: TextStyle(
+                        fontSize: 7,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.deepPurple,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -533,13 +555,21 @@ class _NetworkTileState extends State<_NetworkTile> {
               ],
             ),
           ),
-          // ── Timing bar ──
-          if (res != null && !_expanded)
-            Padding(
-              padding: const EdgeInsets.only(left: 12, right: 12, bottom: 4),
-              child: _TimingBar(durationMs: res.durationMs),
-            ),
-          if (_expanded) _NetworkDetail(entry: widget.entry),
+          // ── Timing bar & Detail ──
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? _NetworkDetail(entry: widget.entry)
+                : (res != null
+                    ? Padding(
+                        padding: const EdgeInsets.only(
+                            left: 12, right: 12, bottom: 4),
+                        child: _TimingBar(durationMs: res.durationMs),
+                      )
+                    : const SizedBox(width: double.infinity)),
+          ),
           const Divider(color: Colors.white10, height: 1),
         ],
       ),
@@ -644,8 +674,29 @@ class _NetworkDetail extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: Wrap(
-              spacing: 6,
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
+                _ActionButton(
+                  icon: Icons.replay,
+                  label: 'Replay',
+                  onPressed: () async {
+                    _showSnackBar(context,
+                        'Replaying ${req.method} ${req.url.split('/').last}…');
+                    try {
+                      final response = await NetworkReplayer.replay(req);
+                      if (context.mounted) {
+                        _showSnackBar(context,
+                            'Replay complete: ${response.statusCode} (${response.durationMs}ms)');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        _showSnackBar(context, 'Replay failed: $e');
+                      }
+                    }
+                  },
+                ),
                 _ActionButton(
                   icon: Icons.terminal,
                   label: 'cURL',
@@ -893,29 +944,36 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
               ],
             ),
           ),
-          if (_expanded) ...[
-            const SizedBox(height: 4),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: _buildJsonTree(_parsed, 0),
-            ),
-          ] else ...[
-            const SizedBox(height: 2),
-            Text(
-              _previewText(_parsed),
-              style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.white.withValues(alpha: 0.4),
-                  fontFamily: 'monospace'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: _buildJsonTree(_parsed, 0),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      _previewText(_parsed),
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontFamily: 'monospace'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+          ),
         ],
       ),
     );
