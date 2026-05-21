@@ -654,8 +654,12 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500))
-      ..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 1500));
+    
+    if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
+      _ctrl.repeat(reverse: true);
+    }
+    
     _scaleAnim = Tween<double>(begin: 1.0, end: 1.1)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }

@@ -30,26 +30,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('BlackBoxOverlay Dynamic Tabs Tests', () {
-    FlutterExceptionHandler? originalOnError;
-    bool Function(Object, StackTrace)? originalPlatformOnError;
-    DebugPrintCallback? originalDebugPrint;
-
     setUp(() {
-      originalOnError = FlutterError.onError;
-      originalPlatformOnError = PlatformDispatcher.instance.onError;
-      originalDebugPrint = debugPrint;
       // Clear configuration before each test
       BlackBox.dispose();
     });
 
     tearDown(() {
       BlackBox.dispose();
-      // Force restore standard test binding handlers to prevent invariant failures
-      FlutterError.onError = originalOnError;
-      PlatformDispatcher.instance.onError = originalPlatformOnError;
-      if (originalDebugPrint != null) {
-        debugPrint = originalDebugPrint!;
-      }
     });
 
     Future<void> runTest(
@@ -59,19 +46,14 @@ void main() {
       } finally {
         // Dispose active BlackBox instance inside the test body (before _verifyInvariants runs)
         BlackBox.dispose();
-        // Force restore standard test binding handlers to prevent invariant failures
-        FlutterError.onError = originalOnError;
-        PlatformDispatcher.instance.onError = originalPlatformOnError;
-        if (originalDebugPrint != null) {
-          debugPrint = originalDebugPrint!;
-        }
       }
     }
 
     Future<void> pumpOverlay(WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: BlackBoxOverlay(
+        MaterialApp(
+          navigatorObservers: [BlackBox.journeyObserver],
+          home: const BlackBoxOverlay(
             child: Scaffold(
               body: Center(child: Text('App Content')),
             ),
