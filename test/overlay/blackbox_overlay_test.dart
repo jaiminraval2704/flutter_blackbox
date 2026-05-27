@@ -75,16 +75,16 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify the overlay panel is visible
-        expect(find.byType(TabBar), findsOneWidget);
+        expect(find.byType(TabBar), findsWidgets);
 
         // Verify we have tabs for Network, Logs, Perf, Rebuilds, Routes, Device, QA
-        expect(find.text('Network'), findsOneWidget);
-        expect(find.text('Logs'), findsOneWidget);
-        expect(find.text('Perf'), findsOneWidget);
-        expect(find.text('Rebuilds'), findsOneWidget);
-        expect(find.text('Routes'), findsOneWidget);
-        expect(find.text('Device'), findsOneWidget);
-        expect(find.text('QA'), findsOneWidget);
+        expect(find.text('Network'), findsWidgets);
+        expect(find.text('Logs'), findsWidgets);
+        expect(find.text('Perf'), findsWidgets);
+        expect(find.text('Rebuilds'), findsWidgets);
+        expect(find.text('Routes'), findsWidgets);
+        expect(find.text('Device'), findsWidgets);
+        expect(find.text('QA'), findsWidgets);
 
         // Verify that Storage and Socket IO tabs are NOT present
         expect(find.text('Storage'), findsNothing);
@@ -109,7 +109,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify Storage tab is visible but Socket IO is not
-        expect(find.text('Storage'), findsOneWidget);
+        expect(find.text('Storage'), findsWidgets);
         expect(find.text('Socket IO'), findsNothing);
       });
     });
@@ -131,7 +131,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify Socket IO tab is visible but Storage is not
-        expect(find.text('Socket IO'), findsOneWidget);
+        expect(find.text('Socket IO'), findsWidgets);
         expect(find.text('Storage'), findsNothing);
       });
     });
@@ -154,15 +154,15 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify all tabs are visible
-        expect(find.text('Network'), findsOneWidget);
-        expect(find.text('Logs'), findsOneWidget);
-        expect(find.text('Perf'), findsOneWidget);
-        expect(find.text('Rebuilds'), findsOneWidget);
-        expect(find.text('Storage'), findsOneWidget);
-        expect(find.text('Routes'), findsOneWidget);
-        expect(find.text('Socket IO'), findsOneWidget);
-        expect(find.text('Device'), findsOneWidget);
-        expect(find.text('QA'), findsOneWidget);
+        expect(find.text('Network'), findsWidgets);
+        expect(find.text('Logs'), findsWidgets);
+        expect(find.text('Perf'), findsWidgets);
+        expect(find.text('Rebuilds'), findsWidgets);
+        expect(find.text('Storage'), findsWidgets);
+        expect(find.text('Routes'), findsWidgets);
+        expect(find.text('Socket IO'), findsWidgets);
+        expect(find.text('Device'), findsWidgets);
+        expect(find.text('QA'), findsWidgets);
       });
     });
   });

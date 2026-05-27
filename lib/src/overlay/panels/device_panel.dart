@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/blackbox_theme.dart';
+
 class DevicePanel extends StatelessWidget {
   const DevicePanel({super.key});
 
@@ -8,16 +10,31 @@ class DevicePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final rows = _buildRows(context, mq);
+    final theme = BlackBoxTheme.of(context);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
       children: [
-        const _GroupHeader('Platform'),
-        ...rows['platform']!.map(_InfoRow.fromEntry),
-        const _GroupHeader('Screen'),
-        ...rows['screen']!.map(_InfoRow.fromEntry),
-        const _GroupHeader('App'),
-        ...rows['app']!.map(_InfoRow.fromEntry),
+        _GlassSection(
+          theme: theme,
+          title: 'Platform',
+          icon: Icons.devices,
+          rows: rows['platform']!,
+        ),
+        const SizedBox(height: 10),
+        _GlassSection(
+          theme: theme,
+          title: 'Screen',
+          icon: Icons.aspect_ratio,
+          rows: rows['screen']!,
+        ),
+        const SizedBox(height: 10),
+        _GlassSection(
+          theme: theme,
+          title: 'App',
+          icon: Icons.apps,
+          rows: rows['app']!,
+        ),
       ],
     );
   }
@@ -74,32 +91,87 @@ class DevicePanel extends StatelessWidget {
   }
 }
 
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader(this.label);
-  final String label;
+class _GlassSection extends StatelessWidget {
+  const _GlassSection({
+    required this.theme,
+    required this.title,
+    required this.icon,
+    required this.rows,
+  });
+
+  final BlackBoxThemeData theme;
+  final String title;
+  final IconData icon;
+  final List<MapEntry<String, String>> rows;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 4),
-        child: Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-              fontSize: 9,
-              color: Colors.white24,
-              fontWeight: FontWeight.w700,
-              letterSpacing: .8),
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardBackground.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
         ),
-      );
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Section header ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: theme.accentColor, size: 14),
+                const SizedBox(width: 8),
+                Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: theme.accentColor,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ── Info rows ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Column(
+              children: rows
+                  .map((e) => _InfoRow(
+                        label: e.key,
+                        value: e.value,
+                        theme: theme,
+                      ))
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  factory _InfoRow.fromEntry(MapEntry<String, String> e) =>
-      _InfoRow(label: e.key, value: e.value);
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.theme,
+  });
 
   final String label;
   final String value;
+  final BlackBoxThemeData theme;
 
   @override
   Widget build(BuildContext context) {
@@ -110,13 +182,14 @@ class _InfoRow extends StatelessWidget {
           SizedBox(
             width: 110,
             child: Text(label,
-                style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                style: TextStyle(fontSize: 11, color: theme.textMuted)),
           ),
           Expanded(
             child: Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11,
-                    color: Colors.white70,
+                    color: theme.textSecondary,
+                    fontWeight: FontWeight.w600,
                     fontFamily: 'monospace')),
           ),
         ],

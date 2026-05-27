@@ -19,3 +19,4 @@ build/
 *.DS_Store
 pana_output.txt
 pana_output2.txt
+pana_final_report.json

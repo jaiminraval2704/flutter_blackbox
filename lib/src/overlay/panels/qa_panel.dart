@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../blackbox.dart';
 import '../../core/log/log_level.dart';
 import '../../core/report/blackbox_report.dart';
+import '../widgets/blackbox_toast.dart';
 import '../../core/report/package_info_impl.dart'
     if (dart.library.html) '../../core/report/package_info_stub.dart'
     if (dart.library.js_interop) '../../core/report/package_info_stub.dart';
@@ -89,10 +90,8 @@ class _QaPanelState extends State<QaPanel> {
   }
 
   void _showCopied() {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-          content: Text('Copied to clipboard'), duration: Duration(seconds: 2)),
-    );
+    HapticFeedback.lightImpact();
+    BlackBoxToast.show(context, 'Copied to clipboard');
   }
 
   @override

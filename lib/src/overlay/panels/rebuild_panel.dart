@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
@@ -162,20 +163,30 @@ class _RebuildPanelState extends State<RebuildPanel> {
                   icon: Icons.refresh,
                   label: 'No rebuild data yet',
                   emoji: '♻️')
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-                  itemCount: entries.length,
-                  itemExtent: 54, // Fixed height for O(1) layout calculation
-                  itemBuilder: (ctx, i) {
-                    final entry = entries[i];
-                    final maxCount = entries.first.value;
-                    return _RebuildTile(
-                      widgetName: entry.key,
-                      count: entry.value,
-                      maxCount: maxCount,
-                      rank: i + 1,
-                    );
+              : RefreshIndicator(
+                  color: const Color(0xFF6C63FF),
+                  backgroundColor: const Color(0xFF1A1A2E),
+                  onRefresh: () async {
+                    HapticFeedback.lightImpact();
+                    BlackBox.instance.rebuildStore.reset();
+                    await Future<void>.delayed(
+                        const Duration(milliseconds: 300));
                   },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                    itemCount: entries.length,
+                    itemExtent: 54, // Fixed height for O(1) layout calculation
+                    itemBuilder: (ctx, i) {
+                      final entry = entries[i];
+                      final maxCount = entries.first.value;
+                      return _RebuildTile(
+                        widgetName: entry.key,
+                        count: entry.value,
+                        maxCount: maxCount,
+                        rank: i + 1,
+                      );
+                    },
+                  ),
                 ),
         ),
       ],

@@ -100,6 +100,41 @@ class BlackBoxThemeData {
 
   /// Backdrop colour shown behind the panel.
   final Color backdropColor;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BlackBoxThemeData &&
+          panelBackground == other.panelBackground &&
+          headerBackground == other.headerBackground &&
+          cardBackground == other.cardBackground &&
+          accentColor == other.accentColor &&
+          textPrimary == other.textPrimary &&
+          textSecondary == other.textSecondary &&
+          textMuted == other.textMuted &&
+          borderColor == other.borderColor &&
+          searchBarFill == other.searchBarFill &&
+          badgeColor == other.badgeColor &&
+          surfaceOverlay == other.surfaceOverlay &&
+          dragHandleColor == other.dragHandleColor &&
+          backdropColor == other.backdropColor;
+
+  @override
+  int get hashCode => Object.hash(
+        panelBackground,
+        headerBackground,
+        cardBackground,
+        accentColor,
+        textPrimary,
+        textSecondary,
+        textMuted,
+        borderColor,
+        searchBarFill,
+        badgeColor,
+        surfaceOverlay,
+        dragHandleColor,
+        backdropColor,
+      );
 }
 
 /// Provides [BlackBoxThemeData] to the overlay widget tree.

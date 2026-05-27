@@ -244,8 +244,9 @@ class BlackBox {
     dk.journeyStore.clear();
 
     dk._trigger = trigger;
+    _userIgnoredWidgets.clear();
     if (ignoredRebuildWidgets.isNotEmpty) {
-      _ignoredWidgets.addAll(ignoredRebuildWidgets);
+      _userIgnoredWidgets.addAll(ignoredRebuildWidgets);
     }
 
     if (!dk._enabled) return;
@@ -435,7 +436,8 @@ class BlackBox {
     }
   }
 
-  static final _ignoredWidgets = <String>{
+  // Built-in widgets to ignore — immutable defaults.
+  static const _defaultIgnoredWidgets = <String>{
     'Text', 'Container', 'Padding', 'SizedBox', 'Column', 'Row', 'Align',
     'Center', 'Positioned', 'Expanded', 'Flexible', 'Stack', 'ListView',
     'GestureDetector', 'InkWell', 'ConstrainedBox', 'DecoratedBox', 'Theme',
@@ -480,6 +482,9 @@ class BlackBox {
     'ConsumerWidget', 'HookConsumerWidget', 'StatefulHookConsumerWidget',
   };
 
+  // User-supplied additions — cleared and re-populated on each setup() call.
+  static final _userIgnoredWidgets = <String>{};
+
   // Pre-compiled RegExp — avoids recompiling on every rebuild callback.
   static final _rebuildRegExp = RegExp(r'(?:Building|Rebuilding)\s+(\w+)\(');
 
@@ -489,7 +494,9 @@ class BlackBox {
     if (match != null) {
       final name = match.group(1)!;
       // Filter out framework-internal or noisy widgets
-      if (name.startsWith('_') || _ignoredWidgets.contains(name)) {
+      if (name.startsWith('_') ||
+          _defaultIgnoredWidgets.contains(name) ||
+          _userIgnoredWidgets.contains(name)) {
         return null;
       }
       return name;

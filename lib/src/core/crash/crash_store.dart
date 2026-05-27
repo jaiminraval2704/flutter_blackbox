@@ -6,7 +6,7 @@ import 'crash_entry.dart';
 /// Manages a collection of captured application crashes and errors.
 class CrashStore {
   /// Creates a crash store with a fixed [capacity].
-  CrashStore({this.capacity = 20});
+  CrashStore({this.capacity = 100});
 
   /// Maximum number of crashes to retain.
   final int capacity;
@@ -14,21 +14,25 @@ class CrashStore {
   final _entries = ListQueue<CrashEntry>();
   final _controller = StreamController<List<CrashEntry>>.broadcast();
 
+  // Cached snapshot — invalidated on mutation.
+  List<CrashEntry>? _cachedEntries;
+
   /// Broadcast stream that emits whenever a new crash is recorded.
   Stream<List<CrashEntry>> get stream => _controller.stream;
 
-  /// Unmodifiable list of all recorded crash entries.
-  List<CrashEntry> get entries => _entries.toList(growable: false);
+  /// Unmodifiable list of all recorded crash entries. Cached until the next mutation.
+  List<CrashEntry> get entries =>
+      _cachedEntries ??= List.unmodifiable(_entries);
 
   void add(CrashEntry entry) {
     if (_entries.length >= capacity) _entries.removeFirst();
     _entries.addLast(entry);
-    _notify();
+    _invalidateAndNotify();
   }
 
   void clear() {
     _entries.clear();
-    _notify();
+    _invalidateAndNotify();
   }
 
   List<Map<String, dynamic>> toJson() =>
@@ -43,7 +47,8 @@ class CrashStore {
 
   Timer? _throttleTimer;
 
-  void _notify() {
+  void _invalidateAndNotify() {
+    _cachedEntries = null;
     if (_controller.isClosed) return;
     if (_throttleTimer?.isActive ?? false) return;
     _throttleTimer = Timer(const Duration(milliseconds: 250), () {

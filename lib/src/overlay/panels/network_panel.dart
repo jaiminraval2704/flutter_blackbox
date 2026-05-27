@@ -8,9 +8,14 @@ import '../../core/network/network_request.dart';
 import '../../core/network/network_response.dart';
 import '../../core/network/network_throttle.dart';
 import '../../core/network/network_replayer.dart';
+import '../../core/network/curl_exporter.dart';
+import '../../core/network/har_exporter.dart';
+import '../../core/network/json_isolate.dart';
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
+import '../widgets/blackbox_toast.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/staggered_list_item.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Filter enums
@@ -41,12 +46,30 @@ class _NetworkPanelState extends State<NetworkPanel> {
     _sub = BlackBox.instance.networkStore.stream.listen((entries) {
       if (mounted) setState(() => _entries = entries);
     });
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollToTop = false;
+
+  void _onScroll() {
+    final show = _scrollController.offset > 300;
+    if (show != _showScrollToTop) {
+      setState(() => _showScrollToTop = show);
+    }
+  }
+
+  void _showSnackBar(BuildContext context, String msg) {
+    HapticFeedback.lightImpact();
+    BlackBoxToast.show(context, msg);
   }
 
   List<NetworkEntry> _applyFilters(List<NetworkEntry> entries) {
@@ -142,6 +165,16 @@ class _NetworkPanelState extends State<NetworkPanel> {
                   );
                 },
                 child: const Icon(Icons.speed, color: Colors.white38, size: 18),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  final har = HarExporter.toHar(_entries);
+                  Clipboard.setData(ClipboardData(text: har));
+                  _showSnackBar(context, 'HAR session copied to clipboard');
+                },
+                child:
+                    const Icon(Icons.download, color: Colors.white38, size: 18),
               ),
               const SizedBox(width: 8),
               GestureDetector(
@@ -262,10 +295,91 @@ class _NetworkPanelState extends State<NetworkPanel> {
                             ),
                           ),
                         Expanded(
-                          child: ListView.builder(
-                            itemCount: filtered.length,
-                            itemBuilder: (ctx, i) => _NetworkTile(
-                                entry: filtered[filtered.length - 1 - i]),
+                          child: Stack(
+                            children: [
+                              RefreshIndicator(
+                                color: const Color(0xFF6C63FF),
+                                backgroundColor: const Color(0xFF1A1A2E),
+                                onRefresh: () async {
+                                  HapticFeedback.lightImpact();
+                                  setState(() {});
+                                  await Future<void>.delayed(
+                                      const Duration(milliseconds: 300));
+                                },
+                                child: ListView.builder(
+                                  controller: _scrollController,
+                                  cacheExtent: 500,
+                                  itemCount: filtered.length,
+                                  padding: const EdgeInsets.only(bottom: 24),
+                                  itemBuilder: (context, index) {
+                                    final actualIndex =
+                                        filtered.length - 1 - index;
+                                    final entry = filtered[actualIndex];
+                                    return Dismissible(
+                                      key: ValueKey(entry.request.id),
+                                      direction: DismissDirection.startToEnd,
+                                      onDismissed: (_) {
+                                        HapticFeedback.mediumImpact();
+                                        BlackBox.instance.networkStore
+                                            .remove(entry.request.id);
+                                      },
+                                      background: Container(
+                                        alignment: Alignment.centerLeft,
+                                        padding:
+                                            const EdgeInsets.only(left: 20),
+                                        color: const Color(0xFFEF4444)
+                                            .withValues(alpha: 0.2),
+                                        child: const Icon(Icons.delete_outline,
+                                            color: Color(0xFFEF4444), size: 20),
+                                      ),
+                                      child: StaggeredListItem(
+                                        index: index,
+                                        child: _NetworkCard(entry: entry),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              // ── Scroll-to-top FAB ──
+                              if (_showScrollToTop)
+                                Positioned(
+                                  right: 12,
+                                  bottom: 12,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      _scrollController.animateTo(0,
+                                          duration:
+                                              const Duration(milliseconds: 400),
+                                          curve: Curves.easeOutCubic);
+                                    },
+                                    child: AnimatedOpacity(
+                                      duration:
+                                          const Duration(milliseconds: 200),
+                                      opacity: _showScrollToTop ? 1.0 : 0.0,
+                                      child: Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF6C63FF)
+                                              .withValues(alpha: 0.85),
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(0xFF6C63FF)
+                                                  .withValues(alpha: 0.3),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(Icons.arrow_upward,
+                                            color: Colors.white, size: 18),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ],
@@ -416,18 +530,17 @@ class _ThrottleSettingsSheetState extends State<_ThrottleSettingsSheet> {
 // Network tile (each request row)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _NetworkTile extends StatefulWidget {
-  const _NetworkTile({required this.entry});
+class _NetworkCard extends StatefulWidget {
+  const _NetworkCard({required this.entry});
   final NetworkEntry entry;
 
   @override
-  State<_NetworkTile> createState() => _NetworkTileState();
+  State<_NetworkCard> createState() => _NetworkCardState();
 }
 
-class _NetworkTileState extends State<_NetworkTile> {
+class _NetworkCardState extends State<_NetworkCard> {
   bool _expanded = false;
 
-  // Cached endpoint string — Uri.parse() is not called on every build.
   late String _endpoint;
 
   @override
@@ -437,7 +550,7 @@ class _NetworkTileState extends State<_NetworkTile> {
   }
 
   @override
-  void didUpdateWidget(_NetworkTile old) {
+  void didUpdateWidget(_NetworkCard old) {
     super.didUpdateWidget(old);
     if (old.entry.request.url != widget.entry.request.url) {
       _endpoint = _parseEndpoint(widget.entry.request.url);
@@ -469,109 +582,117 @@ class _NetworkTileState extends State<_NetworkTile> {
 
     return InkWell(
       onTap: () => setState(() => _expanded = !_expanded),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            child: Row(
-              children: [
-                _MethodBadge(method: req.method),
-                if (req.isReplay) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: const Text(
-                      'REPLAY',
-                      style: TextStyle(
-                        fontSize: 7,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.deepPurple,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: _statusColor, width: 3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                children: [
+                  _MethodBadge(method: req.method),
+                  if (req.isReplay) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Text(
+                        'REPLAY',
+                        style: TextStyle(
+                          fontSize: 7,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.deepPurple,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _endpoint,
-                    style: const TextStyle(fontSize: 11, color: Colors.white70),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (res != null) ...[
-                  const SizedBox(width: 4),
-                  if (res.failureType != NetworkFailureType.none) ...[
-                    Text(
-                      res.failureType.name.toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 9,
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.w600),
-                    ),
-                  ] else ...[
-                    Text(
-                      '${res.statusCode}',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: _statusColor),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${res.durationMs}ms',
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _endpoint,
                       style:
-                          const TextStyle(fontSize: 9, color: Colors.white38),
+                          const TextStyle(fontSize: 11, color: Colors.white70),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    // ── Response size ──
-                    if (res.formattedSize.isNotEmpty) ...[
+                  ),
+                  if (res != null) ...[
+                    const SizedBox(width: 4),
+                    if (res.failureType != NetworkFailureType.none) ...[
+                      Text(
+                        res.failureType.name.toUpperCase(),
+                        style: const TextStyle(
+                            fontSize: 9,
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ] else ...[
+                      Text(
+                        '${res.statusCode}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _statusColor),
+                      ),
                       const SizedBox(width: 4),
                       Text(
-                        res.formattedSize,
+                        '${res.durationMs}ms',
                         style:
-                            const TextStyle(fontSize: 9, color: Colors.white24),
+                            const TextStyle(fontSize: 9, color: Colors.white38),
                       ),
+                      // ── Response size ──
+                      if (res.formattedSize.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          res.formattedSize,
+                          style: const TextStyle(
+                              fontSize: 9, color: Colors.white24),
+                        ),
+                      ],
                     ],
-                  ],
-                ] else
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                        color: Colors.white38, strokeWidth: 1.5),
+                  ] else
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                          color: Colors.white38, strokeWidth: 1.5),
+                    ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white24,
+                    size: 16,
                   ),
-                const SizedBox(width: 4),
-                Icon(
-                  _expanded ? Icons.expand_less : Icons.expand_more,
-                  color: Colors.white24,
-                  size: 16,
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          // ── Timing bar & Detail ──
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: _expanded
-                ? _NetworkDetail(entry: widget.entry)
-                : (res != null
-                    ? Padding(
-                        padding: const EdgeInsets.only(
-                            left: 12, right: 12, bottom: 4),
-                        child: _TimingBar(durationMs: res.durationMs),
-                      )
-                    : const SizedBox(width: double.infinity)),
-          ),
-          const Divider(color: Colors.white10, height: 1),
-        ],
+            // ── Timing bar & Detail ──
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _expanded
+                  ? _NetworkDetail(entry: widget.entry)
+                  : (res != null
+                      ? Padding(
+                          padding: const EdgeInsets.only(
+                              left: 12, right: 12, bottom: 4),
+                          child: _TimingBar(durationMs: res.durationMs),
+                        )
+                      : const SizedBox(width: double.infinity)),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+          ],
+        ),
       ),
     );
   }
@@ -642,6 +763,10 @@ class _NetworkDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Request lifecycle timeline ──
+          _RequestTimeline(entry: entry),
+          const SizedBox(height: 8),
+
           // ── Timing summary ──
           if (res != null) ...[
             _TimingDetailRow(res: res),
@@ -699,11 +824,11 @@ class _NetworkDetail extends StatelessWidget {
                 ),
                 _ActionButton(
                   icon: Icons.terminal,
-                  label: 'cURL',
+                  label: 'Copy cURL',
                   onPressed: () {
-                    final curl = _generateCurl(req);
+                    final curl = CurlExporter.toCurl(req);
                     Clipboard.setData(ClipboardData(text: curl));
-                    _showSnackBar(context, 'cURL copied to clipboard');
+                    _showSnackBar(context, 'cURL copied');
                   },
                 ),
                 _ActionButton(
@@ -731,30 +856,6 @@ class _NetworkDetail extends StatelessWidget {
     );
   }
 
-  // ── cURL generator ──────────────────────────────────────────────────────
-
-  String _generateCurl(NetworkRequest req) {
-    final parts = <String>["curl -X ${req.method} '${req.url}'"];
-
-    req.headers.forEach((key, value) {
-      // Skip redacted headers in cURL
-      if (value.toString().contains('redacted')) return;
-      parts.add("-H '$key: $value'");
-    });
-
-    if (req.body != null) {
-      String bodyStr;
-      try {
-        bodyStr = const JsonEncoder().convert(req.body);
-      } catch (_) {
-        bodyStr = req.body.toString();
-      }
-      parts.add("-d '$bodyStr'");
-    }
-
-    return parts.join(' \\\n  ');
-  }
-
   String _generateFullCopy(NetworkRequest req, NetworkResponse? res) {
     return '''Request URL: ${req.url}
 Method: ${req.method}
@@ -775,7 +876,7 @@ Response Body:
 ${res?.body != null ? _formatJson(res!.body) : 'None'}
 
 cURL:
-${_generateCurl(req)}''';
+${CurlExporter.toCurl(req)}''';
   }
 
   String _formatJson(dynamic data) {
@@ -792,14 +893,8 @@ ${_generateCurl(req)}''';
   }
 
   void _showSnackBar(BuildContext context, String msg) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text(msg, style: const TextStyle(fontSize: 12)),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF2A2A3E),
-      ),
-    );
+    HapticFeedback.lightImpact();
+    BlackBoxToast.show(context, msg);
   }
 }
 
@@ -879,34 +974,32 @@ class _CollapsibleJsonSection extends StatefulWidget {
 
 class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
   bool _expanded = false;
-
-  // Cache the decoded result — jsonDecode is not called on every build().
-  late dynamic _parsed;
+  bool _isParsing = true;
+  dynamic _parsed;
 
   @override
   void initState() {
     super.initState();
-    _parsed = _decodeData(widget.data);
+    _parseData(widget.data);
   }
 
   @override
   void didUpdateWidget(_CollapsibleJsonSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data != widget.data) {
-      _parsed = _decodeData(widget.data);
+      _parseData(widget.data);
     }
   }
 
-  static dynamic _decodeData(dynamic d) {
-    if (d is Map || d is List) return d;
-    if (d is String) {
-      try {
-        return jsonDecode(d);
-      } catch (_) {
-        return d;
-      }
+  Future<void> _parseData(dynamic data) async {
+    setState(() => _isParsing = true);
+    final result = await JsonIsolate.decode(data);
+    if (mounted) {
+      setState(() {
+        _parsed = result;
+        _isParsing = false;
+      });
     }
-    return d;
   }
 
   @override
@@ -963,15 +1056,18 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
                   )
                 : Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      _previewText(_parsed),
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontFamily: 'monospace'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: _isParsing
+                        ? const Text('Parsing...',
+                            style:
+                                TextStyle(fontSize: 10, color: Colors.white38))
+                        : SelectableText(
+                            _previewText(_parsed),
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white.withValues(alpha: 0.4),
+                                fontFamily: 'monospace'),
+                            maxLines: 2,
+                          ),
                   ),
           ),
         ],
@@ -999,6 +1095,17 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
   }
 
   Widget _buildJsonTree(dynamic data, int depth) {
+    if (_isParsing) {
+      return const Center(
+          child: Padding(
+        padding: EdgeInsets.all(8.0),
+        child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: Colors.white38)),
+      ));
+    }
     if (depth > 8) {
       return const Text('…',
           style: TextStyle(color: Colors.white38, fontSize: 10));
@@ -1060,7 +1167,6 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
   @override
   void initState() {
     super.initState();
-    // Auto-expand first two levels
     _expanded = widget.depth < 1;
   }
 
@@ -1148,7 +1254,6 @@ class _JsonListTree extends StatelessWidget {
           style: TextStyle(
               fontSize: 10, color: Colors.white38, fontFamily: 'monospace'));
     }
-    // Show max 20 items, then truncate
     final items = list.length > 20 ? list.sublist(0, 20) : list;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1187,24 +1292,17 @@ class _JsonValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (text, color) = _format(value);
-    return Text(
-      text,
-      style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace'),
-      maxLines: 3,
-      overflow: TextOverflow.ellipsis,
+    final isString = value is String;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: SelectableText(
+        isString ? '"$value"' : value.toString(),
+        style: TextStyle(
+            fontSize: 10,
+            color: isString ? const Color(0xFFC3E88D) : const Color(0xFFF78C6C),
+            fontFamily: 'monospace'),
+      ),
     );
-  }
-
-  (String, Color) _format(dynamic v) {
-    if (v == null) return ('null', const Color(0xFF808080));
-    if (v is bool) return ('$v', const Color(0xFFFF9CAC));
-    if (v is num) return ('$v', const Color(0xFFF78C6C));
-    if (v is String) {
-      final s = v.length > 200 ? '${v.substring(0, 200)}…' : v;
-      return ('"$s"', const Color(0xFFC3E88D));
-    }
-    return (v.toString(), Colors.white60);
   }
 }
 
@@ -1293,6 +1391,145 @@ class _MethodBadge extends StatelessWidget {
         style:
             TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _color),
       ),
+    );
+  }
+}
+
+/// Animated horizontal timeline showing: Request Sent → Processing → Response.
+/// Uses [TweenAnimationBuilder] (bounded, auto-stops) for zero-jank animation.
+class _RequestTimeline extends StatelessWidget {
+  const _RequestTimeline({required this.entry});
+  final NetworkEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPending = entry.isPending;
+    final hasError = entry.response?.failureType != null &&
+        entry.response!.failureType != NetworkFailureType.none;
+    final isSuccess = entry.response?.isSuccess ?? false;
+
+    final phases = [
+      (
+        label: 'Sent',
+        icon: Icons.arrow_upward_rounded,
+        done: true,
+        color: const Color(0xFF6C63FF),
+      ),
+      (
+        label: 'Processing',
+        icon: Icons.sync_rounded,
+        done: !isPending,
+        color: isPending ? const Color(0xFFFBBF24) : const Color(0xFF6C63FF),
+      ),
+      (
+        label: hasError
+            ? 'Error'
+            : isPending
+                ? 'Waiting'
+                : 'Received',
+        icon: hasError
+            ? Icons.error_outline
+            : isPending
+                ? Icons.hourglass_empty
+                : Icons.check_circle_outline,
+        done: !isPending,
+        color: hasError
+            ? const Color(0xFFEF4444)
+            : isSuccess
+                ? const Color(0xFF4ADE80)
+                : const Color(0xFFFBBF24),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          for (int i = 0; i < phases.length; i++) ...[
+            _TimelineDot(
+              icon: phases[i].icon,
+              color: phases[i].color,
+              done: phases[i].done,
+              label: phases[i].label,
+            ),
+            if (i < phases.length - 1)
+              Expanded(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                      begin: 0, end: phases[i + 1].done ? 1.0 : 0.3),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOut,
+                  builder: (context, value, _) {
+                    return Container(
+                      height: 2,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(1),
+                        gradient: LinearGradient(
+                          colors: [
+                            phases[i].color.withValues(alpha: value),
+                            phases[i + 1].color.withValues(alpha: value * 0.6),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineDot extends StatelessWidget {
+  const _TimelineDot({
+    required this.icon,
+    required this.color,
+    required this.done,
+    required this.label,
+  });
+
+  final IconData icon;
+  final Color color;
+  final bool done;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: done ? 1.0 : 0.4),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+      builder: (context, opacity, _) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: opacity * 0.2),
+                border: Border.all(
+                    color: color.withValues(alpha: opacity), width: 1.5),
+              ),
+              child:
+                  Icon(icon, size: 12, color: color.withValues(alpha: opacity)),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 8,
+                color: Colors.white.withValues(alpha: opacity * 0.7),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

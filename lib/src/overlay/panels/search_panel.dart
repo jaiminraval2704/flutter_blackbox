@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
+import '../widgets/blackbox_toast.dart';
 import '../widgets/empty_state.dart';
 
 /// A unified search panel that searches across Network, Logs, Storage,
 /// Socket, and Crash stores simultaneously.
 class SearchPanel extends StatefulWidget {
-  const SearchPanel({super.key});
+  const SearchPanel({super.key, required this.onResultTap});
+  final void Function(String source) onResultTap;
 
   @override
   State<SearchPanel> createState() => _SearchPanelState();
@@ -29,9 +31,13 @@ class _SearchPanelState extends State<SearchPanel> {
   }
 
   void _onSearchChanged(String value) {
+    // Update _query immediately so the UI responds (border, clear button,
+    // empty state). The expensive _search() runs on next build but only
+    // after the debounce prevents rapid-fire rebuilds.
+    setState(() => _query = value);
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() => _query = value);
+      if (mounted) setState(() {});
     });
   }
 
@@ -160,82 +166,96 @@ class _SearchPanelState extends State<SearchPanel> {
   Widget build(BuildContext context) {
     final results = _search(_query);
 
-    return Column(
-      children: [
-        // ── Search bar ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: Container(
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _query.isNotEmpty
-                    ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
-                    : Colors.white10,
-              ),
-            ),
-            child: TextField(
-              controller: _controller,
-              onChanged: _onSearchChanged,
-              style: const TextStyle(
-                  fontSize: 12, color: Colors.white70, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                hintText: 'Search across Network, Logs, Crashes, Sockets…',
-                hintStyle: const TextStyle(fontSize: 11, color: Colors.white24),
-                prefixIcon:
-                    const Icon(Icons.search, color: Colors.white24, size: 16),
-                suffixIcon: _query.isNotEmpty
-                    ? GestureDetector(
-                        onTap: () {
-                          _controller.clear();
-                          setState(() => _query = '');
-                        },
-                        child: const Icon(Icons.close,
-                            color: Colors.white24, size: 14),
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
-            ),
-          ),
-        ),
-
-        // ── Results ──
-        if (_query.isEmpty)
-          const Expanded(
-            child: EmptyState(
-              icon: Icons.search,
-              label:
-                  'Search across all panels\nNetwork • Logs • Crashes • Socket',
-            ),
-          )
-        else if (results.isEmpty)
-          Expanded(
-            child: EmptyState(
-              icon: Icons.search_off,
-              label: 'No results for "$_query"',
-            ),
-          )
-        else ...[
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        children: [
+          // ── Search bar ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              '${results.length} result${results.length == 1 ? '' : 's'}',
-              style: const TextStyle(fontSize: 10, color: Colors.white38),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _query.isNotEmpty
+                      ? const Color(0xFF6C63FF).withValues(alpha: 0.5)
+                      : Colors.white10,
+                ),
+              ),
+              child: TextField(
+                controller: _controller,
+                onChanged: _onSearchChanged,
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontFamily: 'monospace'),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search across Network, Logs, Crashes, Sockets…',
+                  hintStyle:
+                      const TextStyle(fontSize: 11, color: Colors.white24),
+                  prefixIcon:
+                      const Icon(Icons.search, color: Colors.white24, size: 16),
+                  prefixIconConstraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 36),
+                  suffixIcon: _query.isNotEmpty
+                      ? GestureDetector(
+                          onTap: () {
+                            _controller.clear();
+                            setState(() => _query = '');
+                          },
+                          child: const Icon(Icons.close,
+                              color: Colors.white24, size: 14),
+                        )
+                      : null,
+                  suffixIconConstraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 36),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: ListView.builder(
-              itemCount: results.length,
-              itemBuilder: (ctx, i) => _SearchResultTile(result: results[i]),
+
+          // ── Results ──
+          if (_query.isEmpty)
+            const Expanded(
+              child: EmptyState(
+                icon: Icons.search,
+                label:
+                    'Search across all panels\nNetwork • Logs • Crashes • Socket',
+              ),
+            )
+          else if (results.isEmpty)
+            Expanded(
+              child: EmptyState(
+                icon: Icons.search_off,
+                label: 'No results for "$_query"',
+              ),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                '${results.length} result${results.length == 1 ? '' : 's'}',
+                style: const TextStyle(fontSize: 10, color: Colors.white38),
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: ListView.builder(
+                itemCount: results.length,
+                itemBuilder: (ctx, i) => _SearchResultTile(
+                  result: results[i],
+                  onTap: () => widget.onResultTap(results[i].source),
+                ),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -265,23 +285,18 @@ class _SearchResult {
 }
 
 class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.result});
+  const _SearchResultTile({required this.result, required this.onTap});
   final _SearchResult result;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      onTap: onTap,
       onLongPress: () {
         Clipboard.setData(ClipboardData(text: result.copyText));
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: Text('Copied ${result.source} entry',
-                style: const TextStyle(fontSize: 12)),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: const Color(0xFF2A2A3E),
-          ),
-        );
+        HapticFeedback.lightImpact();
+        BlackBoxToast.show(context, 'Copied ${result.source} entry');
       },
       child: Column(
         children: [

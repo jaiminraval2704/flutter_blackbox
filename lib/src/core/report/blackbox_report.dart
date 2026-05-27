@@ -105,10 +105,6 @@ ${notes != null && notes!.isNotEmpty ? '### Notes\n$notes\n' : ''}
       ..writeln('Title: ${bugTitle ?? 'N/A'} [${severity.name.toUpperCase()}]')
       ..writeln('Generated: ${timestamp.toIso8601String()}');
 
-    //if (notes != null && notes!.isNotEmpty) {
-    //  buf.writeln('Notes: $notes');
-    //}
-
     buf
       ..writeln()
       ..writeln('--- App ---');

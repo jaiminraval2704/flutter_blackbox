@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class EmptyState extends StatefulWidget {
+class EmptyState extends StatelessWidget {
   const EmptyState(
       {super.key, required this.icon, required this.label, this.emoji});
   final IconData icon;
@@ -8,10 +8,35 @@ class EmptyState extends StatefulWidget {
   final String? emoji;
 
   @override
-  State<EmptyState> createState() => _EmptyStateState();
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (emoji != null)
+              _FloatingEmoji(emoji: emoji!)
+            else
+              Icon(icon, color: Colors.white24, size: 32),
+            const SizedBox(height: 12),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.white38)),
+          ],
+        ),
+      );
 }
 
-class _EmptyStateState extends State<EmptyState>
+/// A gently bobbing emoji that uses implicit animation.
+/// Stateful only to drive a repeating controller — much lighter than
+/// giving every EmptyState a full SingleTickerProviderStateMixin.
+class _FloatingEmoji extends StatefulWidget {
+  const _FloatingEmoji({required this.emoji});
+  final String emoji;
+
+  @override
+  State<_FloatingEmoji> createState() => _FloatingEmojiState();
+}
+
+class _FloatingEmojiState extends State<_FloatingEmoji>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<Offset> _anim;
@@ -22,7 +47,7 @@ class _EmptyStateState extends State<EmptyState>
     _ctrl =
         AnimationController(vsync: this, duration: const Duration(seconds: 2));
 
-    // Prevent infinite animations breaking tester.pumpAndSettle() in widget tests
+    // Prevent infinite animations breaking tester.pumpAndSettle() in tests
     if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
       _ctrl.repeat(reverse: true);
     }
@@ -38,23 +63,9 @@ class _EmptyStateState extends State<EmptyState>
   }
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.emoji != null)
-              SlideTransition(
-                position: _anim,
-                child:
-                    Text(widget.emoji!, style: const TextStyle(fontSize: 42)),
-              )
-            else
-              Icon(widget.icon, color: Colors.white24, size: 32),
-            const SizedBox(height: 12),
-            Text(widget.label,
-                style: const TextStyle(fontSize: 12, color: Colors.white38)),
-          ],
-        ),
+  Widget build(BuildContext context) => SlideTransition(
+        position: _anim,
+        child: Text(widget.emoji, style: const TextStyle(fontSize: 42)),
       );
 }
 

@@ -23,26 +23,28 @@ class PerformancePanel extends StatelessWidget {
               // ── FPS headline metrics ─────────────────────────────────
               Row(
                 children: [
-                  _MetricCard(
-                    label: 'Current FPS',
-                    value: snap.fps.toStringAsFixed(1),
-                    color: BlackBoxColors.fpsColor(snap.fps),
-                  ),
-                  const SizedBox(width: 10),
-                  _MetricCard(
-                    label: 'Avg frame',
-                    value: '${snap.avgFrameMs.toStringAsFixed(1)}ms',
-                    color: snap.isJanky
-                        ? BlackBoxColors.warning
-                        : BlackBoxColors.success,
-                  ),
-                  const SizedBox(width: 10),
-                  _MetricCard(
-                    label: 'Worst frame',
-                    value: '${snap.worstFrameMs.toStringAsFixed(1)}ms',
-                    color: snap.worstFrameMs > FpsSnapshot.budgetMs
-                        ? BlackBoxColors.error
-                        : BlackBoxColors.success,
+                  _FpsGauge(fps: snap.fps),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _MetricCard(
+                          label: 'Avg frame',
+                          value: '${snap.avgFrameMs.toStringAsFixed(1)}ms',
+                          color: snap.isJanky
+                              ? BlackBoxColors.warning
+                              : BlackBoxColors.success,
+                        ),
+                        const SizedBox(height: 8),
+                        _MetricCard(
+                          label: 'Worst frame',
+                          value: '${snap.worstFrameMs.toStringAsFixed(1)}ms',
+                          color: snap.worstFrameMs > FpsSnapshot.budgetMs
+                              ? BlackBoxColors.error
+                              : BlackBoxColors.success,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -79,28 +81,147 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: const TextStyle(fontSize: 9, color: Colors.white38)),
-            const SizedBox(height: 4),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 9, color: Colors.white38)),
+          const SizedBox(height: 4),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+        ],
       ),
     );
   }
+}
+
+/// Animated radial FPS gauge using CustomPaint.
+class _FpsGauge extends StatelessWidget {
+  const _FpsGauge({required this.fps});
+  final double fps;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = BlackBoxColors.fpsColor(fps);
+    return SizedBox(
+      width: 90,
+      height: 90,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: fps.clamp(0, 120)),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeOutCubic,
+        builder: (context, animatedFps, _) {
+          return CustomPaint(
+            painter: _FpsGaugePainter(
+              fps: animatedFps,
+              color: color,
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    animatedFps.round().toString(),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                    ),
+                  ),
+                  const Text(
+                    'FPS',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white38,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FpsGaugePainter extends CustomPainter {
+  const _FpsGaugePainter({required this.fps, required this.color});
+  final double fps;
+  final Color color;
+
+  static const double _maxFps = 120;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide / 2) - 6;
+
+    // Background arc (track)
+    final trackPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+
+    const startAngle = 2.3562; // 135 degrees in radians
+    const sweepTotal = 4.7124; // 270 degrees in radians
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal,
+      false,
+      trackPaint,
+    );
+
+    // Foreground arc (value)
+    final sweepFraction = (fps / _maxFps).clamp(0.0, 1.0);
+    final valuePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal * sweepFraction,
+      false,
+      valuePaint,
+    );
+
+    // Glow effect (very subtle, only on the value arc)
+    final glowPaint = Paint()
+      ..color = color.withValues(alpha: 0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal * sweepFraction,
+      false,
+      glowPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FpsGaugePainter old) =>
+      old.fps != fps || old.color != color;
 }
 
 class _FrameBudgetBar extends StatelessWidget {

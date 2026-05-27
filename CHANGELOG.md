@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.6.0] - 2026-05-22
+
+### Added
+- **Mini HUD Mode**: The floating draggable trigger button now morphs into a Mini HUD when dragged to the bottom edge. It displays live FPS, the latest HTTP status code, and crash count, without needing to open the full panel.
+- **Copy as cURL**: Added a button to the Network detail view to instantly copy any request as a valid cURL command.
+- **Export HAR**: Added a button to the Network toolbar to export all network requests as an industry-standard HAR (HTTP Archive) 1.2 JSON string, importable into Postman, Insomnia, or Chrome DevTools.
+- **Selectable Text**: Replaced static text with `SelectableText` in the Log panel and Network JSON viewer for easy highlighting and copying of specific snippets.
+- **Staggered Animations**: Wrapped `NetworkCard` and `LogTile` in a new `StaggeredListItem` wrapper, creating a premium cascading slide-up and fade animation when lists are rendered.
+- **Isolate JSON Parsing**: Large JSON responses (>50KB) are now parsed in a background isolate (`compute`) via `JsonIsolate.decode()` to prevent UI thread jank when opening the Network panel.
+- **Swipe-to-Dismiss**: Network and Log entries can now be individually deleted by swiping left-to-right, with haptic feedback and a red delete indicator.
+- **Scroll-to-Top FAB**: Both Network and Log panels now show a floating accent-colored arrow button after scrolling 300px, providing one-tap smooth scroll back to the top.
+- **Pull-to-Refresh**: All scrollable panels (Network, Log, Rebuild) now support pull-to-refresh with haptic feedback. Pulling on the Rebuild panel resets all rebuild counts.
+- **Left Accent Borders**: Network rows display a 3px color-coded left border (green for 2xx, amber for 4xx, red for 5xx, grey for pending). Log rows similarly show a left accent matching their log level color for instant visual scanning.
+- **Haptic Feedback on Tab Switch**: Switching between overlay tabs now triggers a subtle `selectionClick` haptic for a tactile, premium feel.
+- **Glassmorphic Device Panel**: Device panel rebuilt with frosted-glass section cards (Platform, Screen, App), each with a `BackdropFilter` blur, gradient background, accent-colored section headers with icons, and monospace values.
+
+### Changed
+- **Store Capacities**: Increased default store capacities for longer QA sessions without losing data: NetworkStore (50 -> 500), LogStore (200 -> 1000), and CrashStore (20 -> 100).
+- **Default Panel Height**: Overlay default open size increased from 85% to 95% screen height for a more immersive debug experience.
+- **Uniform Tab Widths**: All tab buttons now use a fixed 56px width with ellipsized labels, eliminating uneven tab sizing across different screen widths.
+- **Glassmorphic Polish**: Upgraded the overlay header and panel cards with higher `BackdropFilter` sigma (28), gradient top-edge shines, refined border styles, and soft shadows for a premium frosted-glass aesthetic.
+- **Consistent Monospace Fonts**: Timestamps in Log panel and values in Device panel now use monospace font for improved readability and alignment.
+
+### Performance
+- **Implicit Animations**: Replaced `AnimationController` + `SingleTickerProviderStateMixin` in `StaggeredListItem` with lightweight `AnimatedOpacity` + `AnimatedSlide`. For a list of 200 items, this eliminates 200 animation controller allocations.
+- **EmptyState Optimization**: Converted `EmptyState` from `StatefulWidget` to `StatelessWidget` with an isolated `_FloatingEmoji` sub-widget. The floating emoji animation no longer forces the entire empty state to be stateful.
+- **ListView cacheExtent**: Added `cacheExtent: 500` to Network and Log panel `ListView.builder` instances, pre-building ~500px of off-screen items for smoother scrolling with zero visible pop-in.
+- **TickerMode on Inactive Tabs**: `_LazyIndexedStack` wraps inactive panels with `TickerMode(enabled: false)`, disabling all animation tickers for panels not currently visible — zero background animation overhead.
+
+### Fixed
+- **Web/WASM Compatibility**: Eliminated the final `dart:io` dependency (`HttpClient`) in `NetworkReplayer` by using conditional imports (`network_replayer_stub.dart`). The package is now 100% compliant with Flutter Web/WASM compilation.
+- **Theme Bleed-Through**: Wrapped the entire `BlackBoxOverlay` in a standalone `Theme(data: ThemeData.dark())` to prevent the host application's themes (like light mode or custom fonts) from bleeding into the debug overlay on Web environments.
+- **RepaintBoundary Isolation**: Wrapped `_DraggableFloatingButton` and `_ResizablePanel` in `RepaintBoundary` to prevent the host app from repainting when BlackBox animations (like the floating button breathing effect) occur.
+- **Double-Close Race Condition**: Fixed a bug where rapidly tapping the close button would trigger multiple haptic feedbacks and duplicate animation callbacks. Added an early return guard and immediate visibility flag to prevent re-entry.
+- **Tab Switch Flicker**: Eliminated first-paint flicker when switching tabs by using a warm-up frame strategy — new panels are built invisibly for one frame before fading in via `AnimatedOpacity`.
+- **Keyboard Overlay Shift**: Fixed the overlay shifting upward when the keyboard opens by using a stable `GlobalKey<NavigatorState>` to prevent unnecessary Navigator rebuilds triggered by `MediaQuery` changes.
+
 ## [0.5.3] - 2026-05-21
 
 ### Fixed

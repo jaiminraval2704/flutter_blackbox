@@ -10,7 +10,7 @@ import 'log_level.dart';
 /// the buffer is full. All mutations are synchronous; consumers react
 /// via [stream].
 class LogStore {
-  LogStore({this.capacity = 200});
+  LogStore({this.capacity = 1000});
 
   final int capacity;
 
@@ -36,6 +36,16 @@ class LogStore {
   /// Remove all entries.
   void clear() {
     _buffer.clear();
+    _notify();
+  }
+
+  /// Remove the entry at [index] (0-based, oldest-first).
+  void removeAt(int index) {
+    if (index < 0 || index >= _buffer.length) return;
+    final list = _buffer.toList();
+    list.removeAt(index);
+    _buffer.clear();
+    _buffer.addAll(list);
     _notify();
   }
 

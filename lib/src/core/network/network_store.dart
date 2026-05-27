@@ -19,7 +19,7 @@ class NetworkEntry {
 /// Stores the last [capacity] network entries and exposes them as a
 /// broadcast [Stream].
 class NetworkStore {
-  NetworkStore({this.capacity = 50, this.redactor});
+  NetworkStore({this.capacity = 500, this.redactor});
 
   final int capacity;
 
@@ -95,6 +95,15 @@ class NetworkStore {
     _entries.clear();
     _index.clear();
     _invalidateAndNotify();
+  }
+
+  /// Remove a single entry by its request ID.
+  void remove(String requestId) {
+    final entry = _index.remove(requestId);
+    if (entry != null) {
+      _entries.remove(entry);
+      _invalidateAndNotify();
+    }
   }
 
   List<Map<String, dynamic>> toJson() => _entries
