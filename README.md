@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_blackbox.svg)](https://pub.dev/packages/flutter_blackbox)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.6.0)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
+[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.6.1)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
 
 An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, API mocking, live logs, FPS monitor, rebuild tracker, storage inspector, crash reports, and QA tools. **Zero runtime cost** in release builds. **Zero optional dependencies** — the CLI generates only the adapters you need.
 
@@ -11,11 +11,9 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/network_panel_updated.png" width="260" alt="Network Panel" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/perf_panel_updated.png" width="260" alt="Performance Panel" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/device_info.png" width="260" alt="Device Info" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/network_panel_updated.png" width="31%" alt="Network Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/perf_panel_updated.png" width="31%" alt="Performance Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/device_info.png" width="31%" alt="Device Info" />
 </p>
 
 ---
@@ -43,7 +41,7 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 
 ```yaml
 dependencies:
-  flutter_blackbox: ^0.6.0
+  flutter_blackbox: ^0.6.1
 ```
 
 ---

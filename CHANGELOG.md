@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.1] - 2026-05-27
+
+### Fixed
+- **pub.dev Layout**: Switched README screenshot sizes to percentage-based widths so they properly scale and align side-by-side on pub.dev's narrower container without wrapping.
+
 ## [0.6.0] - 2026-05-22
 
 ### Added
