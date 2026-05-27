@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.2] - 2026-05-27
+
+### Fixed
+- **Analyzer Compatibility**: Ignored `cacheExtent` deprecation warnings on `ListView.builder` to prevent strict CI pipelines from failing on the latest Flutter `stable` channel, while maintaining full compatibility with older Flutter versions (>=3.13.0).
+
 ## [0.6.1] - 2026-05-27
 
 ### Fixed
