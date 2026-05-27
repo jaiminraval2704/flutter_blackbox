@@ -7,13 +7,13 @@
 An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, API mocking, live logs, FPS monitor, rebuild tracker, storage inspector, crash reports, and QA tools. **Zero runtime cost** in release builds. **Zero optional dependencies** — the CLI generates only the adapters you need.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/package_preview.gif" width="700" alt="Flutter BlackBox Preview" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/package_preview.gif" height="400" alt="Flutter BlackBox Preview" />
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/network_panel.png" width="260" alt="Network Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/network_panel_updated.png" width="260" alt="Network Panel" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/perf_panel.png" width="260" alt="Performance Panel" />
+  <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/perf_panel_updated.png" width="260" alt="Performance Panel" />
   &nbsp;&nbsp;&nbsp;&nbsp;
   <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/device_info.png" width="260" alt="Device Info" />
 </p>
