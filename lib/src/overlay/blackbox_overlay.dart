@@ -500,7 +500,7 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
         targetLabel = 'Socket IO';
         break;
     }
-    
+
     final index = _filteredTabs.indexWhere((t) => t.label == targetLabel);
     if (index != -1) {
       _tabController.animateTo(index);
