@@ -308,6 +308,7 @@ class _NetworkPanelState extends State<NetworkPanel> {
                                 },
                                 child: ListView.builder(
                                   controller: _scrollController,
+                                  // ignore: deprecated_member_use
                                   cacheExtent: 500,
                                   itemCount: filtered.length,
                                   padding: const EdgeInsets.only(bottom: 24),

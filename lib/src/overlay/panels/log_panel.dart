@@ -106,6 +106,7 @@ class _LogPanelState extends State<LogPanel> {
                     },
                     child: ListView.builder(
                       controller: _scrollController,
+                      // ignore: deprecated_member_use
                       cacheExtent: 500,
                       padding: const EdgeInsets.only(bottom: 24),
                       itemCount: filteredList.length,
