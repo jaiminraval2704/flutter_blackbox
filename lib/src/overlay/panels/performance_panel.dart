@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/performance/fps_monitor.dart';
+import '../../core/performance/memory_info.dart' as mem;
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
 
@@ -62,6 +63,9 @@ class PerformancePanel extends StatelessWidget {
               const SizedBox(height: 12),
               // ── Jank summary ─────────────────────────────────────────
               _JankSummary(snap: snap),
+              const SizedBox(height: 16),
+              // ── Memory usage ──────────────────────────────────────────
+              const _MemoryUsageCard(),
             ],
           ),
         );
@@ -86,8 +90,15 @@ class _MetricCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,12 +316,25 @@ class _FpsGraphPainter extends CustomPainter {
       final x = i * (barW + 1);
       final color =
           ms > budget ? const Color(0xFFE24B4A) : const Color(0xFF1D9E75);
+      final rect = Rect.fromLTWH(x, size.height - barH, barW, barH);
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, size.height - barH, barW, barH),
-          const Radius.circular(2),
-        ),
-        Paint()..color = color.withValues(alpha: 0.8),
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              color.withValues(alpha: 0.2),
+              color.withValues(alpha: 0.9),
+            ],
+          ).createShader(rect),
+      );
+      // Glow
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        Paint()
+          ..color = color.withValues(alpha: 0.3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       );
     }
   }
@@ -366,5 +390,193 @@ class _SectionTitle extends StatelessWidget {
             color: Colors.white38,
             fontWeight: FontWeight.w600,
             letterSpacing: .5));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory usage card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MemoryUsageCard extends StatefulWidget {
+  const _MemoryUsageCard();
+
+  @override
+  State<_MemoryUsageCard> createState() => _MemoryUsageCardState();
+}
+
+class _MemoryUsageCardState extends State<_MemoryUsageCard> {
+  int _currentRss = 0;
+  int _heapUsed = 0;
+  int _heapCapacity = 0;
+  int _externalUsage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    try {
+      // ProcessInfo is dart:io — only available on native platforms.
+      // ignore: avoid_dynamic_calls
+      final currentRss = _getRss();
+      final maxRss = _getMaxRss();
+      if (currentRss > 0 || maxRss > 0) {
+        setState(() {
+          _currentRss = currentRss;
+          _heapCapacity = maxRss;
+          _heapUsed = currentRss;
+          _externalUsage = (maxRss - currentRss).abs();
+        });
+      }
+    } catch (_) {
+      // ProcessInfo may not be available on web.
+    }
+  }
+
+  static int _getRss() {
+    try {
+      if (kIsWeb) return 0;
+      return mem.getCurrentRss();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static int _getMaxRss() {
+    try {
+      if (kIsWeb) return 0;
+      return mem.getMaxRss();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final usedMb = _heapUsed / (1024 * 1024);
+    final capacityMb = _heapCapacity / (1024 * 1024);
+    final usageRatio =
+        _heapCapacity > 0 ? (_heapUsed / _heapCapacity).clamp(0.0, 1.0) : 0.0;
+
+    final barColor = usageRatio < 0.6
+        ? BlackBoxColors.success
+        : usageRatio < 0.85
+            ? BlackBoxColors.warning
+            : BlackBoxColors.error;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const _SectionTitle('Memory usage'),
+            const Spacer(),
+            GestureDetector(
+              onTap: _refresh,
+              child: const Icon(Icons.refresh, size: 14, color: Colors.white38),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: barColor.withValues(alpha: 0.3), width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: barColor.withValues(alpha: 0.1),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Usage bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: usageRatio,
+                  minHeight: 6,
+                  backgroundColor: Colors.white10,
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Stats row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _MemoryStat(
+                    label: 'RSS',
+                    value: _formatBytes(_currentRss),
+                    icon: Icons.memory,
+                    color: barColor,
+                  ),
+                  _MemoryStat(
+                    label: 'Max RSS',
+                    value: _formatBytes(_heapCapacity),
+                    icon: Icons.storage,
+                    color: Colors.white54,
+                  ),
+                  _MemoryStat(
+                    label: 'Delta',
+                    value: _formatBytes(_externalUsage),
+                    icon: Icons.swap_horiz,
+                    color: Colors.white38,
+                  ),
+                ],
+              ),
+              if (capacityMb > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${usedMb.toStringAsFixed(1)} MB / ${capacityMb.toStringAsFixed(1)} MB  •  ${(usageRatio * 100).toStringAsFixed(0)}% used',
+                  style: TextStyle(fontSize: 9, color: barColor),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MemoryStat extends StatelessWidget {
+  const _MemoryStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(height: 4),
+        Text(value,
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(fontSize: 8, color: Colors.white38)),
+      ],
+    );
   }
 }

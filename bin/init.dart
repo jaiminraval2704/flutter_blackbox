@@ -126,14 +126,16 @@ void main(List<String> args) async {
     exit(0);
   }
 
-  // ── 5. Print setup boilerplate ───────────────────────────────────────
+  // ── 5. Print setup boilerplate or generate adapter files ─────────────
   print('  ✨ ${detections.length} adapter(s) detected!\n');
-  _printSetupCode(detections);
 
-  // ── 6. Optionally generate adapter files ─────────────────────────────
   if (generateFile) {
+    // _generateAdapterFile prints its own "Add to your main.dart" instructions
+    // using the generated setupBlackBox() helper — no need to also call
+    // _printSetupCode, which would duplicate the message with different code.
     _generateAdapterFile(detections);
   } else {
+    _printSetupCode(detections);
     print('');
     print(
         '  💡 Tip: Run with --generate to create lib/blackbox_adapters.dart:');

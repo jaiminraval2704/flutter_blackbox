@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../blackbox.dart';
+import '../../companion/firebase_streamer.dart';
 import 'journey_event.dart';
 import 'journey_store.dart';
 import 'navigation_store.dart';
@@ -21,6 +22,10 @@ class BlackBoxNavigatorObserver extends NavigatorObserver {
     final name = route.settings.name ?? route.runtimeType.toString();
     _store.record(RouteEvent(DateTime.now(), route: name));
     navigationStore?.onPush(name, route.settings.arguments);
+    FirebaseStreamer.instance.broadcast('navigation', {
+      'action': 'push',
+      'route': name,
+    });
   }
 
   @override
@@ -29,6 +34,10 @@ class BlackBoxNavigatorObserver extends NavigatorObserver {
     final name = route.settings.name ?? route.runtimeType.toString();
     _store.record(RouteEvent(DateTime.now(), route: 'popped $name'));
     navigationStore?.onPop(name, route.settings.arguments);
+    FirebaseStreamer.instance.broadcast('navigation', {
+      'action': 'pop',
+      'route': name,
+    });
   }
 
   @override

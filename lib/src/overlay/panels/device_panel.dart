@@ -9,71 +9,81 @@ class DevicePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final rows = _buildRows(context, mq);
     final theme = BlackBoxTheme.of(context);
+    final size = mq.size;
+    final dpr = mq.devicePixelRatio;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
       children: [
-        _GlassSection(
+        _TelemetrySection(
           theme: theme,
-          title: 'Platform',
-          icon: Icons.devices,
-          rows: rows['platform']!,
+          title: 'PLATFORM',
+          icon: Icons.memory,
+          metrics: [
+            (label: 'OS', value: _osVersion()),
+            (
+              label: 'Platform',
+              value: defaultTargetPlatform.name.toUpperCase()
+            ),
+            (
+              label: 'Mode',
+              value: kDebugMode
+                  ? 'DEBUG'
+                  : kProfileMode
+                      ? 'PROFILE'
+                      : 'RELEASE'
+            ),
+            (label: 'Web', value: kIsWeb ? 'YES' : 'NO'),
+          ],
         ),
-        const SizedBox(height: 10),
-        _GlassSection(
+        const SizedBox(height: 16),
+        _TelemetrySection(
           theme: theme,
-          title: 'Screen',
-          icon: Icons.aspect_ratio,
-          rows: rows['screen']!,
+          title: 'SCREEN',
+          icon: Icons.monitor,
+          metrics: [
+            (
+              label: 'Size',
+              value:
+                  '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)} dp'
+            ),
+            (
+              label: 'Physical',
+              value:
+                  '${(size.width * dpr).toStringAsFixed(0)} × ${(size.height * dpr).toStringAsFixed(0)} px'
+            ),
+            (label: 'Pixel ratio', value: '${dpr}x'),
+            (
+              label: 'Text scale',
+              value: '${mq.textScaler.scale(1).toStringAsFixed(2)}x'
+            ),
+            (
+              label: 'Brightness',
+              value: mq.platformBrightness.name.toUpperCase()
+            ),
+            (
+              label: 'Padding',
+              value:
+                  'T:${mq.padding.top.toStringAsFixed(0)} B:${mq.padding.bottom.toStringAsFixed(0)}'
+            ),
+          ],
         ),
-        const SizedBox(height: 10),
-        _GlassSection(
+        const SizedBox(height: 16),
+        _TelemetrySection(
           theme: theme,
-          title: 'App',
+          title: 'APP',
           icon: Icons.apps,
-          rows: rows['app']!,
+          metrics: [
+            (label: 'Debug mode', value: kDebugMode.toString().toUpperCase()),
+            (
+              label: 'Profile mode',
+              value: kProfileMode.toString().toUpperCase()
+            ),
+          ],
         ),
       ],
     );
-  }
-
-  Map<String, List<MapEntry<String, String>>> _buildRows(
-      BuildContext context, MediaQueryData mq) {
-    final size = mq.size;
-    final dpr = mq.devicePixelRatio;
-
-    return {
-      'platform': [
-        MapEntry('Platform', defaultTargetPlatform.name.toUpperCase()),
-        const MapEntry(
-            'Mode',
-            kDebugMode
-                ? 'DEBUG'
-                : kProfileMode
-                    ? 'PROFILE'
-                    : 'RELEASE'),
-        if (!kIsWeb) MapEntry('OS', _osVersion()),
-        const MapEntry('Web', kIsWeb ? 'Yes' : 'No'),
-      ],
-      'screen': [
-        MapEntry('Size',
-            '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)} dp'),
-        MapEntry('Physical',
-            '${(size.width * dpr).toStringAsFixed(0)} × ${(size.height * dpr).toStringAsFixed(0)} px'),
-        MapEntry('Pixel ratio', dpr.toStringAsFixed(2)),
-        MapEntry('Text scale', mq.textScaler.scale(1).toStringAsFixed(2)),
-        MapEntry('Brightness', mq.platformBrightness.name),
-        MapEntry('Padding',
-            'T:${mq.padding.top.toStringAsFixed(0)} B:${mq.padding.bottom.toStringAsFixed(0)}'),
-      ],
-      'app': [
-        // MapEntry('Dart version', Platform.version.split(' ').first), // Removed dart:io dependency
-        MapEntry('Debug mode', kDebugMode.toString()),
-        MapEntry('Profile mode', kProfileMode.toString()),
-      ],
-    };
   }
 
   String _osVersion() {
@@ -91,18 +101,18 @@ class DevicePanel extends StatelessWidget {
   }
 }
 
-class _GlassSection extends StatelessWidget {
-  const _GlassSection({
+class _TelemetrySection extends StatelessWidget {
+  const _TelemetrySection({
     required this.theme,
     required this.title,
     required this.icon,
-    required this.rows,
+    required this.metrics,
   });
 
   final BlackBoxThemeData theme;
   final String title;
   final IconData icon;
-  final List<MapEntry<String, String>> rows;
+  final List<({String label, String value})> metrics;
 
   @override
   Widget build(BuildContext context) {
@@ -113,31 +123,41 @@ class _GlassSection extends StatelessWidget {
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Section header ──
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
+              color: theme.accentColor.withValues(alpha: 0.05),
               border: Border(
                 bottom: BorderSide(
                   color: Colors.white.withValues(alpha: 0.06),
                 ),
               ),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(14)),
             ),
             child: Row(
               children: [
                 Icon(icon, color: theme.accentColor, size: 14),
                 const SizedBox(width: 8),
                 Text(
-                  title.toUpperCase(),
+                  title,
                   style: TextStyle(
                     fontSize: 10,
                     color: theme.accentColor,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.0,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
                   ),
                 ),
               ],
@@ -145,12 +165,12 @@ class _GlassSection extends StatelessWidget {
           ),
           // ── Info rows ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             child: Column(
-              children: rows
-                  .map((e) => _InfoRow(
-                        label: e.key,
-                        value: e.value,
+              children: metrics
+                  .map((m) => _InfoRow(
+                        label: m.label,
+                        value: m.value,
                         theme: theme,
                       ))
                   .toList(),
@@ -176,21 +196,31 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           SizedBox(
             width: 110,
-            child: Text(label,
-                style: TextStyle(fontSize: 11, color: theme.textMuted)),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.textMuted,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: theme.textSecondary,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'monospace')),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.textSecondary,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'monospace',
+              ),
+            ),
           ),
         ],
       ),

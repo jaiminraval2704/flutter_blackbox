@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'network_redactor.dart';
 import 'network_request.dart';
@@ -41,6 +42,28 @@ class NetworkStore {
 
   Stream<List<NetworkEntry>> get stream => _controller.stream;
 
+  static const int _maxBodyBytes = 100 * 1024; // 100 KB limit
+
+  String? _truncateBody(dynamic body) {
+    if (body == null) return null;
+
+    String bodyStr;
+    if (body is String) {
+      bodyStr = body;
+    } else {
+      try {
+        bodyStr = jsonEncode(body);
+      } catch (_) {
+        bodyStr = body.toString();
+      }
+    }
+
+    if (bodyStr.length > _maxBodyBytes) {
+      return '${bodyStr.substring(0, _maxBodyBytes)}\n\n... [TRUNCATED - EXCEEDS 100KB]';
+    }
+    return bodyStr;
+  }
+
   /// Called by [BlackBoxHttpAdapter] when a request is dispatched.
   void onRequest(NetworkRequest request) {
     if (_entries.length >= capacity) {
@@ -48,19 +71,17 @@ class NetworkStore {
       _index.remove(removed.request.id);
     }
 
-    // Redact sensitive fields before storing
-    final storedRequest = redactor != null
-        ? NetworkRequest(
-            id: request.id,
-            method: request.method,
-            url: request.url,
-            timestamp: request.timestamp,
-            headers: redactor!.redactHeaders(request.headers),
-            body: redactor!.redactBody(request.body),
-            queryParameters: request.queryParameters,
-            isReplay: request.isReplay,
-          )
-        : request;
+    // Redact and truncate before storing
+    final storedRequest = NetworkRequest(
+      id: request.id,
+      method: request.method,
+      url: request.url,
+      timestamp: request.timestamp,
+      headers: redactor?.redactHeaders(request.headers) ?? request.headers,
+      body: _truncateBody(redactor?.redactBody(request.body) ?? request.body),
+      queryParameters: request.queryParameters,
+      isReplay: request.isReplay,
+    );
 
     final entry = NetworkEntry(request: storedRequest);
     _entries.addLast(entry);
@@ -73,20 +94,20 @@ class NetworkStore {
   void onResponse(NetworkResponse response) {
     final entry = _index[response.requestId];
     if (entry != null) {
-      // Redact response body before storing
-      if (redactor != null) {
-        entry.response = NetworkResponse(
-          requestId: response.requestId,
-          statusCode: response.statusCode,
-          headers: response.headers,
-          body: redactor!.redactBody(response.body),
-          durationMs: response.durationMs,
-          failureType: response.failureType,
-          responseSizeBytes: response.responseSizeBytes,
-        );
-      } else {
-        entry.response = response;
-      }
+      entry.response = NetworkResponse(
+        requestId: response.requestId,
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body:
+            _truncateBody(redactor?.redactBody(response.body) ?? response.body),
+        durationMs: response.durationMs,
+        failureType: response.failureType,
+        responseSizeBytes: response.responseSizeBytes,
+        dnsMs: response.dnsMs,
+        connectMs: response.connectMs,
+        ttfbMs: response.ttfbMs,
+        downloadMs: response.downloadMs,
+      );
       _invalidateAndNotify();
     }
   }

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0] - 2026-06-17
+
+### Added
+- **"Cyberpunk" UI Overhaul**: The entire BlackBox overlay has been upgraded to a premium aesthetic featuring glowing neon accents, deep dark backgrounds, and frosted-glass panels (`BackdropFilter`).
+- **Interactive JSON Tree**: The Network Panel now features a fully interactive, collapsible JSON tree. Syntax-highlighted keys (neon blue), strings (neon green), booleans (neon pink), and nulls (soft red).
+- **BlackBox Companion Web App**: You can now connect your app to our new [Web Companion Dashboard](https://flutter-blackbox-companion.web.app) to view logs, network requests, and device info on your desktop browser in real-time!
+- **Scanner Quick-Action**: Added a new scanner icon right next to the pin icon in the main overlay header to jump instantly to the "Link" companion setup tab.
+- **Velocity Snapping**: The draggable overlay top-handle now respects swipe velocity, allowing you to flick the panel up to instantly snap it to maximum height or flick down to snap it to its resting height.
+
+### Changed
+- **Device Panel Restored**: Reverted the Device Panel from a restrictive GridView to a scalable list layout (`_InfoRow`). Restored all previously missing device properties (Brightness, Padding, App Debug Mode, etc) while wrapping them in the new glassmorphism aesthetic.
+- **Network Truncation Fix**: Fixed a bug in `NetworkStore` where `Map` bodies were truncated via `body.toString()`, resulting in invalid JSON (e.g., `{data: [...]}`). It now properly uses `jsonEncode()` so the Network Panel can parse and render the beautiful JSON tree correctly.
+- **Isolate Safety in Network Panel**: The `_parseData` background isolate (`compute`) now completely bypasses isolate-spawning if the network body is already a parsed `Map`, preventing silent `Illegal argument in isolate message` crashes that caused the UI to get stuck on "Parsing...".
+
 ## [0.6.2] - 2026-05-27
 
 ### Fixed

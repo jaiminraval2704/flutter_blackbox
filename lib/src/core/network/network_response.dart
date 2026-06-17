@@ -11,6 +11,10 @@ class NetworkResponse {
     required this.durationMs,
     this.failureType = NetworkFailureType.none,
     this.responseSizeBytes,
+    this.dnsMs,
+    this.connectMs,
+    this.ttfbMs,
+    this.downloadMs,
   });
 
   /// The ID of the originating [NetworkRequest].
@@ -34,6 +38,18 @@ class NetworkResponse {
   /// Total size of the response body in bytes.
   final int? responseSizeBytes;
 
+  /// DNS lookup time in milliseconds.
+  final int? dnsMs;
+
+  /// TCP/TLS connection time in milliseconds.
+  final int? connectMs;
+
+  /// Time to first byte (server processing time) in milliseconds.
+  final int? ttfbMs;
+
+  /// Content download time in milliseconds.
+  final int? downloadMs;
+
   bool get isSuccess => statusCode >= 200 && statusCode < 300;
   bool get isClientError => statusCode >= 400 && statusCode < 500;
   bool get isServerError => statusCode >= 500;
@@ -55,5 +71,9 @@ class NetworkResponse {
         'durationMs': durationMs,
         'failureType': failureType.name,
         if (responseSizeBytes != null) 'responseSizeBytes': responseSizeBytes,
+        if (dnsMs != null) 'dnsMs': dnsMs,
+        if (connectMs != null) 'connectMs': connectMs,
+        if (ttfbMs != null) 'ttfbMs': ttfbMs,
+        if (downloadMs != null) 'downloadMs': downloadMs,
       };
 }

@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_blackbox.svg)](https://pub.dev/packages/flutter_blackbox)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.6.2)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
+[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.7.0)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
 
 An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, API mocking, live logs, FPS monitor, rebuild tracker, storage inspector, crash reports, and QA tools. **Zero runtime cost** in release builds. **Zero optional dependencies** — the CLI generates only the adapters you need.
 
@@ -18,7 +18,17 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 
 ---
 
-## 🚀 Features
+**BlackBox** is the ultimate native debug overlay and remote dashboard for Flutter apps. Inspect network requests, debug logs, widget rebuilds, feature flags, crashes, and device telemetry—either right on your device screen via the **Cyberpunk-styled overlay**, or remotely on your desktop browser using the **Web Companion**.
+
+## ✨ Features
+
+- **🌐 Network Inspector** — Intercept HTTP/Dio/Socket requests. View headers, timing metrics, response sizes, and a beautifully syntax-highlighted **Interactive JSON Tree**.
+- **💻 Remote Web Companion** — Beam real-time logs and network calls to the [BlackBox Web Dashboard](https://flutter-blackbox-companion.web.app) via Firebase or local Wi-Fi.
+- **🚀 Cyberpunk Native Overlay** — A buttery-smooth, frosted-glass (`BackdropFilter`) overlay with velocity-snapped resizing that floats over your app without disrupting the UI.
+- **⚡ Performance & Rebuilds** — Track live FPS, spot frame drops, and monitor aggressive widget rebuilds.
+- **🗄️ Storage Inspector** — View and edit `SharedPreferences` or other local databases securely.
+- **🔒 Privacy First** — Auto-redacts sensitive keys (passwords, tokens) before they ever hit the memory store.
+- **🛠️ Zero Dependencies** — The core `flutter_blackbox` package has zero optional dependencies. It generates adapters specifically for what you use.
 
 | Panel | Description |
 |-------|-------------|
@@ -41,8 +51,19 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 
 ```yaml
 dependencies:
-  flutter_blackbox: ^0.6.2
+  flutter_blackbox: ^0.7.0
 ```
+
+---
+
+## 🛡️ Zero Impact in Production
+
+BlackBox is designed to be completely invisible and zero-cost in release builds.
+
+- **Auto-disabled via `kDebugMode`**: `BlackBox.setup()` exits immediately in release mode. No adapters are attached, no listeners are registered.
+- **Zero Widget Tree Overhead**: The `BlackBoxOverlay` widget returns your raw `child` in release mode. It does not insert any `Stack`, `Overlay`, or `Builder` into the widget tree.
+- **Tree-Shaking Guarantees**: Heavy features like Firebase streaming are wrapped in `kDebugMode` guards, allowing the Dart compiler to tree-shake them entirely from your release binary.
+- **Memory Caps**: All internal stores (Logs, Network, Crashes) have strict capacity limits (e.g., max 500 network calls) and automatically truncate payloads exceeding 100KB to prevent memory leaks during intense debug sessions.
 
 ---
 
@@ -190,18 +211,13 @@ BlackBox.setup(
 
 ---
 
-## ✨ What's New in 0.6.0
+## ✨ What's New in 0.7.0
 
-- **Mini HUD Mode** — drag the floating button to the bottom edge for a persistent live status bar
-- **Swipe-to-Dismiss** — swipe left-to-right on network/log entries to delete them
-- **Scroll-to-Top** — floating arrow button after scrolling, one-tap to jump back
-- **Pull-to-Refresh** — pull down on any list panel to refresh or reset data
-- **Haptic Feedback** — tab switches, swipe actions, and pull-to-refresh provide tactile feedback
-- **Glassmorphic UI** — frosted-glass panels with gradient shines, blur effects, and accent borders
-- **Left Accent Borders** — color-coded left borders on network and log rows for instant status scanning
-- **Performance Boost** — implicit animations, `cacheExtent` pre-building, `TickerMode` for inactive tabs
-- **HAR Export** — copy all network requests as HAR 1.2 JSON for Postman/Chrome DevTools
-- **Isolate JSON Parsing** — large response bodies parsed off the main thread
+- **BlackBox Companion Web App** — Connect your app to our new [Web Companion Dashboard](https://flutter-blackbox-companion.web.app) to view logs, network requests, and device info on your desktop browser in real-time!
+- **"Cyberpunk" UI Overhaul** — The entire BlackBox overlay upgraded to a premium aesthetic featuring glowing neon accents, deep dark backgrounds, and frosted-glass panels (`BackdropFilter`).
+- **Interactive JSON Tree** — The Network Panel now features a fully interactive, collapsible JSON tree. Syntax-highlighted keys (neon blue), strings (neon green), booleans (neon pink), and nulls (soft red).
+- **Scanner Quick-Action** — Added a new scanner icon right next to the pin icon in the main overlay header to jump instantly to the "Link" companion setup tab.
+- **Velocity Snapping** — The draggable overlay top-handle now respects swipe velocity, allowing you to flick the panel up to instantly snap it to maximum height or flick down to snap it to its resting height.
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

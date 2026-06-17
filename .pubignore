@@ -17,6 +17,7 @@ build/
 .dart_tool/
 .idea/
 *.DS_Store
+.flutter-plugins-dependencies
 pana_output.txt
 pana_output2.txt
 pana_final_report.json

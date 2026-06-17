@@ -194,6 +194,7 @@ class _LogTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = BlackBoxColors.forLevel(entry.level);
     return InkWell(
+      onTap: () => _showLogDetails(context, color),
       onLongPress: () {
         Clipboard.setData(ClipboardData(text: entry.toString()));
         HapticFeedback.lightImpact();
@@ -201,6 +202,7 @@ class _LogTile extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.02),
           border: Border(
             left: BorderSide(color: color, width: 3),
           ),
@@ -212,14 +214,27 @@ class _LogTile extends StatelessWidget {
             children: [
               Container(
                 width: 48,
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(
-                  entry.level.label,
-                  style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                      fontFamily: 'monospace'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: color.withValues(alpha: 0.4), width: 0.5),
+                  boxShadow: [
+                    BoxShadow(
+                        color: color.withValues(alpha: 0.2), blurRadius: 4),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    entry.level.label,
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                        letterSpacing: 0.5,
+                        fontFamily: 'monospace'),
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -235,18 +250,33 @@ class _LogTile extends StatelessWidget {
                             color: color.withValues(alpha: 0.7),
                             fontFamily: 'monospace'),
                       ),
-                    SelectableText(
-                      _truncate(entry.message),
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.white70, height: 1.4),
+                    GestureDetector(
+                      onDoubleTap: () {
+                        Clipboard.setData(ClipboardData(text: entry.message));
+                        HapticFeedback.selectionClick();
+                        BlackBoxToast.show(context, 'Copied log message');
+                      },
+                      child: Text(
+                        _truncate(entry.message),
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.white70, height: 1.4),
+                      ),
                     ),
                     if (entry.data != null)
-                      SelectableText(
-                        _truncate(entry.data.toString()),
-                        style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white38,
-                            fontFamily: 'monospace'),
+                      GestureDetector(
+                        onDoubleTap: () {
+                          Clipboard.setData(
+                              ClipboardData(text: entry.data.toString()));
+                          HapticFeedback.selectionClick();
+                          BlackBoxToast.show(context, 'Copied log data');
+                        },
+                        child: Text(
+                          _truncate(entry.data.toString()),
+                          style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white38,
+                              fontFamily: 'monospace'),
+                        ),
                       ),
                   ],
                 ),
@@ -266,14 +296,167 @@ class _LogTile extends StatelessWidget {
     );
   }
 
-  String _truncate(String str, [int maxLen = 3000]) {
+  String _truncate(String str, [int maxLen = 500]) {
     if (str.length <= maxLen) return str;
-    return '${str.substring(0, maxLen)}...\n[TRUNCATED to preserve performance]';
+    return '${str.substring(0, maxLen)}…';
   }
 
   String _formatTime(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:'
       '${t.minute.toString().padLeft(2, '0')}:'
       '${t.second.toString().padLeft(2, '0')}';
+
+  static String _truncateDetail(String str, [int maxLen = 5000]) {
+    if (str.length <= maxLen) return str;
+    return '${str.substring(0, maxLen)}\n\n… [Truncated – ${str.length - maxLen} chars hidden]';
+  }
+
+  void _showLogDetails(BuildContext context, Color color) {
+    // Pre-compute all strings BEFORE opening the sheet to avoid
+    // expensive toString() calls during the build/animation frame.
+    final String messageText = _truncateDetail(entry.message);
+    final String? dataText = entry.data != null
+        ? _truncateDetail(
+            entry.data is Map && (entry.data as Map).containsKey('details')
+                ? (entry.data as Map)['details'].toString()
+                : entry.data.toString(),
+          )
+        : null;
+    final String? errorText =
+        entry.error != null ? _truncateDetail(entry.error.toString()) : null;
+    final String? stackText = entry.stackTrace != null
+        ? _truncateDetail(entry.stackTrace.toString())
+        : null;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final height = MediaQuery.of(ctx).size.height * 0.65;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: height),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: color),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        entry.level.label.toUpperCase(),
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, color: Colors.white70),
+                      onPressed: () {
+                        Clipboard.setData(
+                            ClipboardData(text: entry.toString()));
+                        HapticFeedback.lightImpact();
+                        BlackBoxToast.show(ctx, 'Copied details');
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const Divider(color: Colors.white10),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 10),
+                        const Text('Message',
+                            style: TextStyle(
+                                color: Colors.white54, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(
+                          messageText,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                        if (dataText != null) ...[
+                          const SizedBox(height: 16),
+                          const Text('Data / Context',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              dataText,
+                              style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontFamily: 'monospace',
+                                  fontSize: 12),
+                            ),
+                          ),
+                        ],
+                        if (errorText != null) ...[
+                          const SizedBox(height: 16),
+                          const Text('Error',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Text(
+                            errorText,
+                            style: const TextStyle(
+                                color: Colors.redAccent, fontSize: 13),
+                          ),
+                        ],
+                        if (stackText != null) ...[
+                          const SizedBox(height: 16),
+                          const Text('Stack Trace',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              stackText,
+                              style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontFamily: 'monospace',
+                                  fontSize: 11),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 30),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,6 +483,12 @@ class _LevelFilterChips extends StatelessWidget {
               border: Border.all(
                   color: isActive ? color : Colors.white24, width: 0.5),
               borderRadius: BorderRadius.circular(20),
+              boxShadow: isActive
+                  ? [
+                      BoxShadow(
+                          color: color.withValues(alpha: 0.3), blurRadius: 6),
+                    ]
+                  : null,
             ),
             child: Text(l.label,
                 style: TextStyle(

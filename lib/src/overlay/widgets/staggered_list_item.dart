@@ -44,10 +44,15 @@ class _StaggeredListItemState extends State<StaggeredListItem> {
   @override
   Widget build(BuildContext context) {
     return AnimatedOpacity(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
       opacity: _visible ? 1.0 : 0.0,
-      child: widget.child,
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        offset: _visible ? Offset.zero : const Offset(0, 0.08),
+        child: widget.child,
+      ),
     );
   }
 }

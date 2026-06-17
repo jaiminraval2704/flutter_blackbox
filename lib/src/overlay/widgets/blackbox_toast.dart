@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 /// A lightweight, self-contained toast notification for the BlackBox overlay.
@@ -115,35 +116,50 @@ class _ToastWidgetState extends State<_ToastWidget>
             scale: _scaleAnim,
             child: GestureDetector(
               onTap: widget.onDismiss,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.1),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(widget.icon, color: const Color(0xFF6C63FF), size: 18),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        widget.message,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.none,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A2E).withValues(alpha: 0.80),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFF6C63FF).withValues(alpha: 0.25),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              const Color(0xFF6C63FF).withValues(alpha: 0.15),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(widget.icon,
+                            color: const Color(0xFF6C63FF), size: 18),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            widget.message,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.none,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

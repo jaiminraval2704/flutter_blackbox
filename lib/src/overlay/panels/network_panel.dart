@@ -10,7 +10,6 @@ import '../../core/network/network_throttle.dart';
 import '../../core/network/network_replayer.dart';
 import '../../core/network/curl_exporter.dart';
 import '../../core/network/har_exporter.dart';
-import '../../core/network/json_isolate.dart';
 import '../../blackbox.dart';
 import '../widgets/blackbox_colors.dart';
 import '../widgets/blackbox_toast.dart';
@@ -18,10 +17,25 @@ import '../widgets/empty_state.dart';
 import '../widgets/staggered_list_item.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Filter enums
+// Filter enums & Presets
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum _StatusFilter { all, success, clientErr, serverErr, pending, failed }
+
+class _FilterPreset {
+  _FilterPreset({
+    required this.name,
+    required this.query,
+    required this.statusFilter,
+    required this.methodFilter,
+  });
+  final String name;
+  final String query;
+  final _StatusFilter statusFilter;
+  final String methodFilter;
+}
+
+final List<_FilterPreset> _savedPresets = [];
 
 class NetworkPanel extends StatefulWidget {
   const NetworkPanel({super.key});
@@ -34,6 +48,8 @@ class _NetworkPanelState extends State<NetworkPanel> {
   String _query = '';
   _StatusFilter _statusFilter = _StatusFilter.all;
   String _methodFilter = 'ALL';
+
+  final _searchCtrl = TextEditingController();
 
   // Single subscription instead of two StreamBuilders on the same stream.
   List<NetworkEntry> _entries = const [];
@@ -52,6 +68,7 @@ class _NetworkPanelState extends State<NetworkPanel> {
   @override
   void dispose() {
     _sub?.cancel();
+    _searchCtrl.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -70,6 +87,53 @@ class _NetworkPanelState extends State<NetworkPanel> {
   void _showSnackBar(BuildContext context, String msg) {
     HapticFeedback.lightImpact();
     BlackBoxToast.show(context, msg);
+  }
+
+  void _savePreset() {
+    if (_savedPresets.length >= 3) {
+      _showSnackBar(context, 'Max 3 presets allowed. Long-press to delete.');
+      return;
+    }
+
+    final ctrl = TextEditingController();
+    showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xff2A2A2A),
+              title: const Text('Save Preset',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              content: TextField(
+                controller: ctrl,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'e.g. Auth Errors',
+                  hintStyle: TextStyle(color: Colors.white38),
+                ),
+                autofocus: true,
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel',
+                        style: TextStyle(color: Colors.white54))),
+                TextButton(
+                    onPressed: () {
+                      if (ctrl.text.trim().isNotEmpty) {
+                        setState(() {
+                          _savedPresets.add(_FilterPreset(
+                            name: ctrl.text.trim(),
+                            query: _query,
+                            statusFilter: _statusFilter,
+                            methodFilter: _methodFilter,
+                          ));
+                        });
+                      }
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('Save',
+                        style: TextStyle(color: Color(0xFF6C63FF)))),
+              ],
+            ));
   }
 
   List<NetworkEntry> _applyFilters(List<NetworkEntry> entries) {
@@ -151,9 +215,16 @@ class _NetworkPanelState extends State<NetworkPanel> {
             children: [
               Expanded(
                 child: PanelSearchBar(
+                  controller: _searchCtrl,
                   hint: 'Filter by URL…',
                   onChanged: (v) => setState(() => _query = v),
                 ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _savePreset,
+                child: const Icon(Icons.bookmark_add_outlined,
+                    color: Colors.white38, size: 18),
               ),
               const SizedBox(width: 8),
               GestureDetector(
@@ -185,6 +256,62 @@ class _NetworkPanelState extends State<NetworkPanel> {
             ],
           ),
         ),
+
+        // ── Presets row ──────────────────────────────────────────────
+        if (_savedPresets.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: SizedBox(
+              height: 24,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final p in _savedPresets)
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        setState(() {
+                          _query = p.query;
+                          _searchCtrl.text = p.query;
+                          _statusFilter = p.statusFilter;
+                          _methodFilter = p.methodFilter;
+                        });
+                      },
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        setState(() => _savedPresets.remove(p));
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: const Color(0xFF6C63FF)
+                                  .withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.bookmark,
+                                size: 10, color: Color(0xFF6C63FF)),
+                            const SizedBox(width: 4),
+                            Text(p.name,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFF6C63FF),
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
 
         // ── Filter chips row ─────────────────────────────────────────
         Padding(
@@ -568,6 +695,31 @@ class _NetworkCardState extends State<_NetworkCard> {
     }
   }
 
+  static String _parseServiceTag(String url) {
+    try {
+      final host = Uri.parse(url).host;
+      if (host.isEmpty) return '';
+      // Extract meaningful service name from hostname
+      // e.g. "auth-service.example.com" -> "AUTH"
+      // e.g. "api.payments.io" -> "PAYMENTS"
+      // e.g. "10.0.2.2" -> "LOCAL"
+      if (RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(host) ||
+          host == 'localhost') {
+        return 'LOCAL';
+      }
+      final parts = host.split('.');
+      // Take the first subdomain or the domain itself
+      final label = parts.length >= 2 ? parts[0] : host;
+      // Clean common prefixes
+      final cleaned =
+          label.replaceAll(RegExp(r'^(api|www|app|service|svc)[-.]?'), '');
+      final result = cleaned.isEmpty ? label : cleaned;
+      return result.toUpperCase();
+    } catch (_) {
+      return '';
+    }
+  }
+
   Color get _statusColor {
     final code = widget.entry.response?.statusCode ?? 0;
     if (code == 0) return Colors.white38;
@@ -585,6 +737,7 @@ class _NetworkCardState extends State<_NetworkCard> {
       onTap: () => setState(() => _expanded = !_expanded),
       child: Container(
         decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.02),
           border: Border(
             left: BorderSide(color: _statusColor, width: 3),
           ),
@@ -597,6 +750,10 @@ class _NetworkCardState extends State<_NetworkCard> {
               child: Row(
                 children: [
                   _MethodBadge(method: req.method),
+                  if (_parseServiceTag(req.url).isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    _ServiceTag(label: _parseServiceTag(req.url)),
+                  ],
                   if (req.isReplay) ...[
                     const SizedBox(width: 4),
                     Container(
@@ -637,12 +794,29 @@ class _NetworkCardState extends State<_NetworkCard> {
                             fontWeight: FontWeight.w600),
                       ),
                     ] else ...[
-                      Text(
-                        '${res.statusCode}',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: _statusColor),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: _statusColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: _statusColor.withValues(alpha: 0.4),
+                              width: 0.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _statusColor.withValues(alpha: 0.2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '${res.statusCode}',
+                          style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: _statusColor),
+                        ),
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -687,7 +861,7 @@ class _NetworkCardState extends State<_NetworkCard> {
                       ? Padding(
                           padding: const EdgeInsets.only(
                               left: 12, right: 12, bottom: 4),
-                          child: _TimingBar(durationMs: res.durationMs),
+                          child: _WaterfallBar(res: res),
                         )
                       : const SizedBox(width: double.infinity)),
             ),
@@ -700,47 +874,93 @@ class _NetworkCardState extends State<_NetworkCard> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timing bar visualization
+// Waterfall timing visualization
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _TimingBar extends StatelessWidget {
-  const _TimingBar({required this.durationMs});
-  final int durationMs;
+class _WaterfallBar extends StatelessWidget {
+  const _WaterfallBar({required this.res, this.showLegend = false});
+  final NetworkResponse res;
+  final bool showLegend;
 
   @override
   Widget build(BuildContext context) {
-    // Normalize: 0ms = 0%, 3000ms+ = 100%
-    final ratio = (durationMs / 3000).clamp(0.0, 1.0);
-    final color = durationMs < 300
-        ? BlackBoxColors.success
-        : durationMs < 1000
-            ? BlackBoxColors.warning
-            : BlackBoxColors.error;
+    final total = res.durationMs > 0 ? res.durationMs : 1;
 
-    return SizedBox(
-      height: 3,
-      child: LayoutBuilder(
-        builder: (ctx, constraints) {
-          return Stack(
+    // Heuristic fallback if actual phases aren't provided
+    final int dns = res.dnsMs ?? (total * 0.05).round();
+    final int connect = res.connectMs ?? (total * 0.15).round();
+    final int ttfb = res.ttfbMs ?? (total * 0.50).round();
+    int download = res.downloadMs ?? (total - dns - connect - ttfb);
+    if (download < 0) download = 0;
+
+    final dnsColor = const Color(0xFF06B6D4);
+    final connectColor = const Color(0xFF3B82F6);
+    final ttfbColor = const Color(0xFFF59E0B);
+    final downloadColor = const Color(0xFF10B981);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: showLegend ? 4 : 3,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(1.5),
+            child: Row(
+              children: [
+                if (dns > 0)
+                  Expanded(flex: dns, child: Container(color: dnsColor)),
+                if (connect > 0)
+                  Expanded(
+                      flex: connect, child: Container(color: connectColor)),
+                if (ttfb > 0)
+                  Expanded(flex: ttfb, child: Container(color: ttfbColor)),
+                if (download > 0)
+                  Expanded(
+                      flex: download, child: Container(color: downloadColor)),
+              ],
+            ),
+          ),
+        ),
+        if (showLegend) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: constraints.maxWidth * ratio,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+              _LegendItem(color: dnsColor, label: 'DNS', value: dns),
+              _LegendItem(
+                  color: connectColor, label: 'Connect', value: connect),
+              _LegendItem(color: ttfbColor, label: 'TTFB', value: ttfb),
+              _LegendItem(
+                  color: downloadColor, label: 'Download', value: download),
             ],
-          );
-        },
-      ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem(
+      {required this.color, required this.label, required this.value});
+  final Color color;
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text('$label ${value}ms',
+            style: const TextStyle(fontSize: 8, color: Colors.white70)),
+      ],
     );
   }
 }
@@ -771,6 +991,8 @@ class _NetworkDetail extends StatelessWidget {
           // ── Timing summary ──
           if (res != null) ...[
             _TimingDetailRow(res: res),
+            const SizedBox(height: 12),
+            _WaterfallBar(res: res, showLegend: true),
             const SizedBox(height: 8),
           ],
 
@@ -957,7 +1179,7 @@ class _TimingDetailRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Collapsible JSON section — Pretty JSON Viewer
+// Collapsible JSON section — High-Performance Syntax Highlighter
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CollapsibleJsonSection extends StatefulWidget {
@@ -992,15 +1214,37 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
     }
   }
 
-  Future<void> _parseData(dynamic data) async {
-    setState(() => _isParsing = true);
-    final result = await JsonIsolate.decode(data);
+  void _parseData(dynamic data) {
+    dynamic result = data;
+    if (data is String) {
+      try {
+        result = jsonDecode(data);
+      } catch (_) {
+        result = data;
+      }
+    }
+
     if (mounted) {
       setState(() {
         _parsed = result;
         _isParsing = false;
       });
     }
+  }
+
+  String _formatForCopy(dynamic data) {
+    try {
+      return const JsonEncoder.withIndent('  ').convert(data);
+    } catch (_) {
+      return data.toString();
+    }
+  }
+
+  String _previewText(dynamic data) {
+    if (data is Map) return '{${data.length} keys}';
+    if (data is List) return '[${data.length} items]';
+    final s = data.toString();
+    return s.length > 120 ? '${s.substring(0, 120)}…' : s;
   }
 
   @override
@@ -1011,6 +1255,7 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _expanded = !_expanded),
             child: Row(
               children: [
@@ -1029,8 +1274,8 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
                 const Spacer(),
                 GestureDetector(
                   onTap: () {
-                    final text = _formatForCopy(_parsed);
-                    Clipboard.setData(ClipboardData(text: text));
+                    Clipboard.setData(
+                        ClipboardData(text: _formatForCopy(_parsed)));
                   },
                   child:
                       const Icon(Icons.copy, size: 12, color: Colors.white24),
@@ -1039,8 +1284,8 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
             ),
           ),
           AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
             child: _expanded
                 ? Padding(
@@ -1051,8 +1296,21 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.05)),
                       ),
-                      child: _buildJsonTree(_parsed, 0),
+                      child: _isParsing
+                          ? const Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white38,
+                                ),
+                              ),
+                            )
+                          : _buildJsonTree(_parsed, 0),
                     ),
                   )
                 : Padding(
@@ -1062,7 +1320,7 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
                             style:
                                 TextStyle(fontSize: 10, color: Colors.white38))
                         : SelectableText(
-                            _previewText(_parsed),
+                            _previewText(_parsed).replaceAll('\n', ' '),
                             style: TextStyle(
                                 fontSize: 10,
                                 color: Colors.white.withValues(alpha: 0.4),
@@ -1076,37 +1334,7 @@ class _CollapsibleJsonSectionState extends State<_CollapsibleJsonSection> {
     );
   }
 
-  String _previewText(dynamic data) {
-    if (data is Map) {
-      return '{${data.length} key${data.length == 1 ? '' : 's'}}';
-    }
-    if (data is List) {
-      return '[${data.length} item${data.length == 1 ? '' : 's'}]';
-    }
-    final s = data.toString();
-    return s.length > 120 ? '${s.substring(0, 120)}…' : s;
-  }
-
-  String _formatForCopy(dynamic data) {
-    try {
-      return const JsonEncoder.withIndent('  ').convert(data);
-    } catch (_) {
-      return data.toString();
-    }
-  }
-
   Widget _buildJsonTree(dynamic data, int depth) {
-    if (_isParsing) {
-      return const Center(
-          child: Padding(
-        padding: EdgeInsets.all(8.0),
-        child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-                strokeWidth: 2, color: Colors.white38)),
-      ));
-    }
     if (depth > 8) {
       return const Text('…',
           style: TextStyle(color: Colors.white38, fontSize: 10));
@@ -1180,7 +1408,7 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: widget.depth * 12.0),
+      padding: EdgeInsets.only(left: widget.depth * 10.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1189,7 +1417,7 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
                 ? () => setState(() => _expanded = !_expanded)
                 : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 1),
+              padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1197,14 +1425,14 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
                     Icon(
                       _expanded ? Icons.expand_more : Icons.chevron_right,
                       size: 12,
-                      color: Colors.white24,
+                      color: Colors.white38,
                     ),
                   if (!widget.isComplex) const SizedBox(width: 12),
                   Text(
                     '"${widget.keyName}"',
                     style: const TextStyle(
                         fontSize: 10,
-                        color: Color(0xFF82AAFF),
+                        color: Color(0xFF82AAFF), // Cyberpunk Key Color
                         fontFamily: 'monospace'),
                   ),
                   const Text(': ',
@@ -1219,7 +1447,7 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
                       _preview,
                       style: const TextStyle(
                           fontSize: 10,
-                          color: Colors.white24,
+                          color: Colors.white38,
                           fontFamily: 'monospace'),
                     ),
                 ],
@@ -1228,7 +1456,7 @@ class _JsonKeyValueRowState extends State<_JsonKeyValueRow> {
           ),
           if (_expanded && widget.isComplex)
             Padding(
-              padding: const EdgeInsets.only(left: 12),
+              padding: const EdgeInsets.only(left: 6),
               child: widget.value is Map
                   ? _JsonMapTree(
                       map: widget.value as Map, depth: widget.depth + 1)
@@ -1255,7 +1483,7 @@ class _JsonListTree extends StatelessWidget {
           style: TextStyle(
               fontSize: 10, color: Colors.white38, fontFamily: 'monospace'));
     }
-    final items = list.length > 20 ? list.sublist(0, 20) : list;
+    final items = list.length > 30 ? list.sublist(0, 30) : list;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1268,14 +1496,14 @@ class _JsonListTree extends StatelessWidget {
             isComplex: isComplex,
           );
         }),
-        if (list.length > 20)
+        if (list.length > 30)
           Padding(
-            padding: EdgeInsets.only(left: depth * 12.0),
+            padding: EdgeInsets.only(left: depth * 10.0),
             child: Text(
-              '… ${list.length - 20} more items',
+              '… ${list.length - 30} more items',
               style: const TextStyle(
                   fontSize: 10,
-                  color: Colors.white24,
+                  color: Colors.white38,
                   fontFamily: 'monospace',
                   fontStyle: FontStyle.italic),
             ),
@@ -1294,14 +1522,32 @@ class _JsonValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isString = value is String;
+    final isBool = value is bool;
+    final isNull = value == null;
+
+    Color color;
+    if (isString) {
+      color = const Color(0xFFC3E88D); // Neon green
+    } else if (isBool) {
+      color = const Color(0xFFFF5370); // Neon pink
+    } else if (isNull) {
+      color = const Color(0xFFF07178); // Soft red
+    } else {
+      color = const Color(0xFFF78C6C); // Orange
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: SelectableText(
-        isString ? '"$value"' : value.toString(),
-        style: TextStyle(
-            fontSize: 10,
-            color: isString ? const Color(0xFFC3E88D) : const Color(0xFFF78C6C),
-            fontFamily: 'monospace'),
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: GestureDetector(
+        onDoubleTap: () {
+          Clipboard.setData(ClipboardData(text: value.toString()));
+          HapticFeedback.selectionClick();
+          BlackBoxToast.show(context, 'Copied value');
+        },
+        child: Text(
+          isString ? '"$value"' : value.toString(),
+          style: TextStyle(fontSize: 10, color: color, fontFamily: 'monospace'),
+        ),
       ),
     );
   }
@@ -1382,15 +1628,64 @@ class _MethodBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: _color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: _color.withValues(alpha: 0.4), width: 0.5),
+        boxShadow: [
+          BoxShadow(color: _color.withValues(alpha: 0.2), blurRadius: 4),
+        ],
       ),
       child: Text(
         method.toUpperCase(),
-        style:
-            TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _color),
+        style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: _color,
+            letterSpacing: 0.5),
+      ),
+    );
+  }
+}
+
+class _ServiceTag extends StatelessWidget {
+  const _ServiceTag({required this.label});
+  final String label;
+
+  // Deterministic color from label hash — same service always gets the same color.
+  Color get _color {
+    const palette = [
+      Color(0xFF06B6D4), // cyan
+      Color(0xFFA855F7), // purple
+      Color(0xFFEC4899), // pink
+      Color(0xFF14B8A6), // teal
+      Color(0xFFF97316), // orange
+      Color(0xFF8B5CF6), // violet
+      Color(0xFF22D3EE), // sky
+      Color(0xFFE879F9), // fuchsia
+    ];
+    return palette[label.hashCode.abs() % palette.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: c.withValues(alpha: 0.3), width: 0.5),
+      ),
+      child: Text(
+        label.length > 6 ? '${label.substring(0, 6)}…' : label,
+        style: TextStyle(
+          fontSize: 7,
+          fontWeight: FontWeight.w800,
+          color: c,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -1463,13 +1758,20 @@ class _RequestTimeline extends StatelessWidget {
                   builder: (context, value, _) {
                     return Container(
                       height: 2,
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(1),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                phases[i].color.withValues(alpha: value * 0.4),
+                            blurRadius: 4,
+                          ),
+                        ],
                         gradient: LinearGradient(
                           colors: [
                             phases[i].color.withValues(alpha: value),
-                            phases[i + 1].color.withValues(alpha: value * 0.6),
+                            phases[i + 1].color.withValues(alpha: value * 0.5),
                           ],
                         ),
                       ),
@@ -1508,16 +1810,22 @@ class _TimelineDot extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 24,
-              height: 24,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withValues(alpha: opacity * 0.2),
+                color: color.withValues(alpha: opacity * 0.15),
                 border: Border.all(
-                    color: color.withValues(alpha: opacity), width: 1.5),
+                    color: color.withValues(alpha: opacity * 0.8), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: opacity * 0.3),
+                    blurRadius: 6,
+                  ),
+                ],
               ),
               child:
-                  Icon(icon, size: 12, color: color.withValues(alpha: opacity)),
+                  Icon(icon, size: 13, color: color.withValues(alpha: opacity)),
             ),
             const SizedBox(height: 3),
             Text(

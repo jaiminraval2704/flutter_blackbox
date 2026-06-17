@@ -71,12 +71,17 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
 
 class PanelSearchBar extends StatelessWidget {
   const PanelSearchBar(
-      {super.key, required this.hint, required this.onChanged});
+      {super.key,
+      required this.hint,
+      required this.onChanged,
+      this.controller});
   final String hint;
   final ValueChanged<String> onChanged;
+  final TextEditingController? controller;
 
   @override
   Widget build(BuildContext context) => TextField(
+        controller: controller,
         onChanged: onChanged,
         style: const TextStyle(fontSize: 12, color: Colors.white70),
         decoration: InputDecoration(

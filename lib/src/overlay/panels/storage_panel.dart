@@ -373,7 +373,7 @@ class _StorageTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: isSensitive
             ? Colors.red.withValues(alpha: 0.03)
-            : Colors.white.withValues(alpha: 0.04),
+            : Colors.white.withValues(alpha: 0.02),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color:
@@ -483,26 +483,68 @@ class _StorageTile extends StatelessWidget {
               ),
             )
           else
-            Text(
-              isSensitive
-                  ? _redactedValue
-                  : (displayValue.length > 200
-                      ? '${displayValue.substring(0, 200)}…'
-                      : displayValue),
-              style: TextStyle(
-                  fontSize: 10,
-                  color: isSensitive
-                      ? Colors.redAccent.withValues(alpha: 0.5)
-                      : Colors.white54,
-                  fontFamily: 'monospace',
-                  letterSpacing: isSensitive ? 2 : 0,
-                  height: 1.4),
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-            ),
+            isSensitive
+                ? Text(
+                    _redactedValue,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.redAccent.withValues(alpha: 0.5),
+                        fontFamily: 'monospace',
+                        letterSpacing: 2,
+                        height: 1.4),
+                  )
+                : Text.rich(
+                    _highlightJson(displayValue.length > 300
+                        ? '${displayValue.substring(0, 300)}…'
+                        : displayValue),
+                    style: const TextStyle(
+                        fontSize: 10, fontFamily: 'monospace', height: 1.4),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                  ),
         ],
       ),
     );
+  }
+
+  TextSpan _highlightJson(String text) {
+    const keyColor = Color(0xFF82AAFF);
+    const stringColor = Color(0xFFC3E88D);
+    const boolColor = Color(0xFFFF5370);
+    const nullColor = Color(0xFFF07178);
+    const numColor = Color(0xFFF78C6C);
+    const defaultColor = Colors.white60;
+
+    final RegExp jsonRegex = RegExp(
+        r'("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)');
+    final List<TextSpan> spans = [];
+    int lastEnd = 0;
+    for (final match in jsonRegex.allMatches(text)) {
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(
+            text: text.substring(lastEnd, match.start),
+            style: const TextStyle(color: defaultColor)));
+      }
+      final str = match.group(0)!;
+      Color color;
+      if (str.startsWith('"')) {
+        color = str.endsWith(':') ? keyColor : stringColor;
+      } else if (str == 'true' || str == 'false') {
+        color = boolColor;
+      } else if (str == 'null') {
+        color = nullColor;
+      } else {
+        color = numColor;
+      }
+      spans.add(TextSpan(text: str, style: TextStyle(color: color)));
+      lastEnd = match.end;
+    }
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(
+          text: text.substring(lastEnd),
+          style: const TextStyle(color: defaultColor)));
+    }
+    return TextSpan(children: spans);
   }
 }
 

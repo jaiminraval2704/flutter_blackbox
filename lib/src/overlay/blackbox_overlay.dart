@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show ImageByteFormat;
+import 'dart:ui' show ImageByteFormat, ImageFilter;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +19,7 @@ import 'panels/socket_panel.dart';
 import 'panels/storage_panel.dart';
 import 'panels/device_panel.dart';
 import 'panels/qa_panel.dart';
+import 'panels/companion_panel.dart';
 import 'widgets/blackbox_theme.dart';
 
 /// Wrap your [MaterialApp] (or [CupertinoApp]) with this widget.
@@ -68,6 +69,8 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
   final _panelHeightFraction = ValueNotifier<double>(0.95);
   late final Animation<double> _fadeAnimation;
   late final Animation<Offset> _slideAnimation;
+
+  final _floatingButtonKey = GlobalKey<_DraggableFloatingButtonState>();
 
   // A stable global key for the internal navigator.
   // This prevents the navigator (and its internal Overlay/OverlayEntry items)
@@ -153,6 +156,7 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
 
   void _open() {
     if (_isVisible) return;
+    _floatingButtonKey.currentState?.clearBadge();
     HapticFeedback.mediumImpact();
     setState(() => _isVisible = true);
     _animController.forward();
@@ -216,6 +220,7 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
             // ── Floating button trigger (draggable) ─────────────────────
             if (trigger is FloatingButtonTrigger || _isHudPinned)
               _DraggableFloatingButton(
+                key: _floatingButtonKey,
                 onTap: _toggle,
                 accentColor: themeData.accentColor,
                 forceHudMode: _isHudPinned,
@@ -308,13 +313,25 @@ class _ResizablePanel extends StatelessWidget {
         builder: (context, fraction, child) {
           return Stack(
             children: [
-              // ── Semi-transparent backdrop ──
+              // ── Semi-transparent backdrop with radial glow ──
               Positioned.fill(
                 child: GestureDetector(
                   onTap: onClose,
-                  child: Container(
-                    color:
-                        theme.backdropColor.withValues(alpha: fraction * 0.5),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0, 1.2),
+                        radius: 1.8,
+                        colors: [
+                          theme.accentColor.withValues(alpha: 0.08 * fraction),
+                          theme.backdropColor
+                              .withValues(alpha: fraction * 0.55),
+                          theme.backdropColor
+                              .withValues(alpha: fraction * 0.65),
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -330,18 +347,28 @@ class _ResizablePanel extends StatelessWidget {
                     children: [
                       // ── Drag handle ──
                       GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onVerticalDragUpdate: (details) {
                           final delta = -details.delta.dy / screenHeight;
                           final newFraction =
                               (fraction + delta).clamp(0.3, 1.0);
                           heightFraction.value = newFraction;
                         },
+                        onVerticalDragEnd: (details) {
+                          if (details.primaryVelocity != null) {
+                            if (details.primaryVelocity! < -500) {
+                              heightFraction.value = 0.95; // Flick up
+                            } else if (details.primaryVelocity! > 500) {
+                              heightFraction.value = 0.4; // Flick down
+                            }
+                          }
+                        },
                         onDoubleTap: () {
-                          heightFraction.value = fraction < 0.75 ? 0.85 : 0.5;
+                          heightFraction.value = fraction < 0.75 ? 0.95 : 0.4;
                         },
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 20),
                           color: Colors.transparent,
                           child: Center(
                             child: Container(
@@ -465,6 +492,11 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
         label: 'QA',
         view: () => QaPanel(captureScreen: widget.captureScreen)
       ),
+      (
+        icon: Icons.qr_code_scanner,
+        label: 'Link',
+        view: () => const CompanionPanel()
+      ),
     ];
 
     _filteredTabs = allTabs.map((t) => (icon: t.icon, label: t.label)).toList();
@@ -579,153 +611,200 @@ class _PanelHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = BlackBoxTheme.of(context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.headerBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Container(
-            height: 1,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withValues(alpha: 0.0),
-                  Colors.white.withValues(alpha: 0.10),
-                  Colors.white.withValues(alpha: 0.0),
-                ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.headerBackground.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
               ),
-            ),
+              BoxShadow(
+                color: theme.accentColor.withValues(alpha: 0.1),
+                blurRadius: 30,
+                spreadRadius: -5,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                _BlackBoxBadge(theme: theme),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(
-                    isSearching ? Icons.search_off : Icons.search,
-                    color:
-                        isSearching ? theme.accentColor : theme.textSecondary,
-                    size: 18,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      theme.accentColor.withValues(alpha: 0.3),
+                      Colors.transparent,
+                    ],
                   ),
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    onSearchToggle();
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                 ),
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.push_pin_outlined,
-                      color: Colors.white54, size: 18),
-                  onPressed: () {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    HapticFeedback.lightImpact();
-                    onPinToHud();
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: Icon(Icons.close, color: theme.textSecondary, size: 18),
-                  onPressed: () {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    HapticFeedback.lightImpact();
-                    onClose();
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-          if (!isSearching)
-            TabBar(
-              controller: tabController,
-              isScrollable: true,
-              indicator: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                gradient: LinearGradient(
-                  colors: [
-                    theme.accentColor.withValues(alpha: 0.25),
-                    theme.accentColor.withValues(alpha: 0.15),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    _BlackBoxBadge(theme: theme),
+                    const Spacer(),
+                    IconButton(
+                      icon: Icon(
+                        isSearching ? Icons.search_off : Icons.search,
+                        color: isSearching
+                            ? theme.accentColor
+                            : theme.textSecondary,
+                        size: 18,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        onSearchToggle();
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.qr_code_scanner,
+                          color: Colors.white54, size: 18),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        final linkTabIndex =
+                            tabs.indexWhere((t) => t.label == 'Link');
+                        if (linkTabIndex != -1) {
+                          tabController.animateTo(linkTabIndex);
+                        }
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.push_pin_outlined,
+                          color: Colors.white54, size: 18),
+                      onPressed: () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        HapticFeedback.lightImpact();
+                        onPinToHud();
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: Icon(Icons.close,
+                          color: theme.textSecondary, size: 18),
+                      onPressed: () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        HapticFeedback.lightImpact();
+                        onClose();
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
                   ],
                 ),
-                border: Border.all(
-                  color: theme.accentColor.withValues(alpha: 0.3),
-                  width: 0.5,
-                ),
               ),
-              indicatorPadding:
-                  const EdgeInsets.symmetric(horizontal: -8, vertical: 6),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
-              labelColor: theme.textPrimary,
-              unselectedLabelColor: theme.textMuted,
-              labelStyle:
-                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-              unselectedLabelStyle:
-                  const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-              tabAlignment: TabAlignment.start,
-              dividerColor: Colors.transparent,
-              tabs: tabs.map((t) {
-                final isQa = t.label == 'QA';
-                return StreamBuilder<List<dynamic>>(
-                  stream: isQa
-                      ? BlackBox.instance.crashStore.stream
-                      : const Stream<List<dynamic>>.empty(),
-                  initialData:
-                      isQa ? BlackBox.instance.crashStore.entries : <dynamic>[],
-                  builder: (context, snapshot) {
-                    final hasCrash = isQa && ((snapshot.data ?? []).isNotEmpty);
-                    return SizedBox(
-                      width: 50,
-                      child: Tab(
-                        iconMargin: const EdgeInsets.only(bottom: 4),
-                        icon: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Icon(t.icon, size: 16),
-                            if (hasCrash)
-                              Positioned(
-                                right: -4,
-                                top: -2,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text('CRASH',
-                                      style: TextStyle(
-                                          fontSize: 6,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        child: Text(
-                          t.label,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
+              if (!isSearching)
+                TabBar(
+                  controller: tabController,
+                  isScrollable: true,
+                  indicator: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: [
+                        theme.accentColor.withValues(alpha: 0.30),
+                        theme.accentColor.withValues(alpha: 0.15),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: theme.accentColor.withValues(alpha: 0.35),
+                      width: 0.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.accentColor.withValues(alpha: 0.25),
+                        blurRadius: 12,
+                        spreadRadius: -2,
+                        offset: const Offset(0, 2),
                       ),
+                    ],
+                  ),
+                  indicatorPadding:
+                      const EdgeInsets.symmetric(horizontal: -8, vertical: 6),
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  labelColor: theme.textPrimary,
+                  unselectedLabelColor: theme.textMuted,
+                  labelStyle: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w600),
+                  tabAlignment: TabAlignment.start,
+                  dividerColor: Colors.transparent,
+                  tabs: tabs.map((t) {
+                    final isQa = t.label == 'QA';
+                    return StreamBuilder<List<dynamic>>(
+                      stream: isQa
+                          ? BlackBox.instance.crashStore.stream
+                          : const Stream<List<dynamic>>.empty(),
+                      initialData: isQa
+                          ? BlackBox.instance.crashStore.entries
+                          : <dynamic>[],
+                      builder: (context, snapshot) {
+                        final hasCrash =
+                            isQa && ((snapshot.data ?? []).isNotEmpty);
+                        return SizedBox(
+                          width: 50,
+                          child: Tab(
+                            iconMargin: const EdgeInsets.only(bottom: 4),
+                            icon: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(t.icon, size: 16),
+                                if (hasCrash)
+                                  Positioned(
+                                    right: -4,
+                                    top: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('CRASH',
+                                          style: TextStyle(
+                                              fontSize: 6,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            child: Text(
+                              t.label,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        );
+                      },
                     );
-                  },
-                );
-              }).toList(),
-            ),
-        ],
+                  }).toList(),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -738,31 +817,50 @@ class _PanelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = BlackBoxTheme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Container(
-            height: 1,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withValues(alpha: 0.0),
-                  Colors.white.withValues(alpha: 0.08),
-                  Colors.white.withValues(alpha: 0.0),
-                ],
-              ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.cardBackground.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: theme.accentColor.withValues(alpha: 0.08),
+                blurRadius: 40,
+                spreadRadius: -5,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
-          Expanded(child: child),
-        ],
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      theme.accentColor.withValues(alpha: 0.4),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(child: child),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -813,6 +911,7 @@ class _BlackBoxBadge extends StatelessWidget {
 
 class _DraggableFloatingButton extends StatefulWidget {
   const _DraggableFloatingButton({
+    super.key,
     required this.onTap,
     required this.accentColor,
     this.forceHudMode = false,
@@ -845,6 +944,7 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
   int _lastPingMs = 0;
   int _crashCount = 0;
   double _fps = 0;
+  int _errorBadge = 0;
 
   StreamSubscription<List<NetworkEntry>>? _networkSub;
   StreamSubscription<List<CrashEntry>>? _crashSub;
@@ -892,6 +992,12 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
     super.dispose();
   }
 
+  void clearBadge() {
+    if (_errorBadge > 0 && mounted) {
+      setState(() => _errorBadge = 0);
+    }
+  }
+
   @override
   void didUpdateWidget(covariant _DraggableFloatingButton oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -916,6 +1022,10 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
           setState(() {
             _lastSeenRequestId = entry.request.id;
             _lastPingMs = entry.durationMs;
+            if (entry.response!.isClientError ||
+                entry.response!.isServerError) {
+              _errorBadge++;
+            }
           });
         }
         return;
@@ -976,17 +1086,38 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
             width: _isHudMode ? hudWidth : buttonSize,
             height: _isHudMode ? hudHeight : buttonSize,
             decoration: BoxDecoration(
-              color: _isHudMode
-                  ? widget.accentColor.withValues(alpha: 0.9)
-                  : widget.accentColor,
+              gradient: _isHudMode
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        widget.accentColor.withValues(alpha: 0.95),
+                        widget.accentColor.withValues(alpha: 0.80),
+                      ],
+                    )
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        widget.accentColor,
+                        Color.lerp(
+                            widget.accentColor, const Color(0xFF38BDF8), 0.4)!,
+                      ],
+                    ),
               borderRadius: BorderRadius.circular(
                 _isHudMode ? hudHeight / 2 : buttonSize / 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: widget.accentColor.withValues(alpha: 0.35),
-                  blurRadius: _isHudMode ? 12 : 8,
+                  color: widget.accentColor.withValues(alpha: 0.45),
+                  blurRadius: _isHudMode ? 16 : 14,
+                  spreadRadius: _isHudMode ? 0 : 1,
                   offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: widget.accentColor.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  spreadRadius: 4,
                 ),
               ],
             ),
@@ -1001,6 +1132,7 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
     final isDesktop = _isDesktopPlatform();
     return Stack(
       alignment: Alignment.center,
+      clipBehavior: Clip.none,
       children: [
         ScaleTransition(
           scale: _scaleAnim,
@@ -1025,6 +1157,35 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
                   color: Colors.white70,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+            ),
+          ),
+        if (_errorBadge > 0)
+          Positioned(
+            top: 2,
+            right: 2,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                _errorBadge > 9 ? '9+' : '$_errorBadge',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
           ),

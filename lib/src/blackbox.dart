@@ -37,6 +37,7 @@ import 'core/socket/socket_event.dart';
 import 'core/socket/socket_store.dart';
 import 'overlay/blackbox_trigger.dart';
 import 'overlay/widgets/blackbox_theme.dart';
+import 'companion/firebase_streamer.dart';
 
 /// Central singleton that owns all BlackBox stores and wires adapters.
 ///
@@ -106,6 +107,7 @@ class BlackBox {
   // ── Journey stream subscription ──────────────────────────────────────
 
   StreamSubscription<List<NetworkEntry>>? _journeySub;
+  StreamSubscription<FpsSnapshot>? _fpsSub;
 
   // ── Rebuild tracking state ────────────────────────────────────────────
 
@@ -207,100 +209,118 @@ class BlackBox {
     bool redactSensitiveData = true,
     int maxRebuildTrackCount = 500,
   }) {
-    final dk = _instance;
+    dev.Timeline.startSync('BlackBox.setup');
+    try {
+      final dk = _instance;
 
-    // ── Tear down previous setup (idempotent) ──────────────────────────
-    dk._logAdapter?.detach();
-    for (final a in dk._httpAdapters) {
-      a.detach();
-    }
-    for (final a in dk._socketAdapters) {
-      a.detach();
-    }
-    dk._journeySub?.cancel();
-    dk.fpsMonitor.stop();
-    dk._httpAdapters.clear();
-    dk._socketAdapters.clear();
-    dk._storageAdapters.clear();
-    dk._observers.clear();
-
-    dk._enabled = enabled ?? kDebugMode;
-    dk._redactSensitiveData = redactSensitiveData;
-    dk._theme = theme;
-    dk.rebuildStore.capacity = maxRebuildTrackCount;
-
-    // ── Network store with optional redactor ───────────────────────────
-    dk.networkStore.dispose();
-    final effectiveRedactor =
-        redactSensitiveData ? (networkRedactor ?? NetworkRedactor()) : null;
-    dk.networkStore = NetworkStore(redactor: effectiveRedactor);
-
-    // Clear all other stores to prevent memory buildup / data bleed between setup runs (e.g. across unit tests)
-    dk.logStore.clear();
-    dk.crashStore.clear();
-    dk.socketStore.clear();
-    dk.rebuildStore.reset();
-    dk.navigationStore.clear();
-    dk.journeyStore.clear();
-
-    dk._trigger = trigger;
-    _userIgnoredWidgets.clear();
-    if (ignoredRebuildWidgets.isNotEmpty) {
-      _userIgnoredWidgets.addAll(ignoredRebuildWidgets);
-    }
-
-    if (!dk._enabled) return;
-
-    // ── Log adapter ────────────────────────────────────────────────────
-    final la = logAdapter ?? PrintLogAdapter();
-    dk._logAdapter = la;
-    la.onLogCallback = (entry) => dk.logStore.add(entry);
-    la.attach();
-
-    // ── HTTP adapters ──────────────────────────────────────────────────
-    for (final adapter in httpAdapters) {
-      adapter.onRequestCallback = dk.networkStore.onRequest;
-      adapter.onResponseCallback = dk.networkStore.onResponse;
-      adapter.interceptCallback = dk.mockEngine.intercept;
-      adapter.attach();
-      dk._httpAdapters.add(adapter);
-    }
-
-    // ── Journey tracking + observer notification for API calls ────────
-    dk._journeySub = dk.networkStore.stream.listen((entries) {
-      if (entries.isNotEmpty) {
-        final last = entries.last;
-        if (last.response != null) {
-          dk.journeyStore.record(ApiEvent(
-            DateTime.now(),
-            method: last.request.method,
-            url: last.request.url,
-            statusCode: last.response!.statusCode,
-          ));
-          // Notify observers about network activity
-          dk._notifyObserversNetwork(last);
-        }
+      // ── Tear down previous setup (idempotent) ──────────────────────────
+      dk._logAdapter?.detach();
+      for (final a in dk._httpAdapters) {
+        a.detach();
       }
-    });
+      for (final a in dk._socketAdapters) {
+        a.detach();
+      }
+      dk._journeySub?.cancel();
+      dk._fpsSub?.cancel();
+      dk.fpsMonitor.stop();
+      dk._httpAdapters.clear();
+      dk._socketAdapters.clear();
+      dk._storageAdapters.clear();
+      dk._observers.clear();
 
-    // ── Storage adapters ────────────────────────────────────────────────
-    dk._storageAdapters.addAll(storageAdapters);
+      dk._enabled = enabled ?? kDebugMode;
+      dk._redactSensitiveData = redactSensitiveData;
+      dk._theme = theme;
+      dk.rebuildStore.capacity = maxRebuildTrackCount;
 
-    // ── Observers ───────────────────────────────────────────────────────
-    dk._observers.addAll(observers);
+      // ── Network store with optional redactor ───────────────────────────
+      dk.networkStore.dispose();
+      final effectiveRedactor =
+          redactSensitiveData ? (networkRedactor ?? NetworkRedactor()) : null;
+      dk.networkStore = NetworkStore(redactor: effectiveRedactor);
 
-    // ── Socket adapters ─────────────────────────────────────────────────
-    for (final adapter in socketAdapters) {
-      adapter.onEventCallback = dk.socketStore.onEvent;
-      adapter.attach();
-      dk._socketAdapters.add(adapter);
+      // Clear all other stores to prevent memory buildup / data bleed between setup runs (e.g. across unit tests)
+      dk.logStore.clear();
+      dk.crashStore.clear();
+      dk.socketStore.clear();
+      dk.rebuildStore.reset();
+      dk.navigationStore.clear();
+      dk.journeyStore.clear();
+
+      dk._trigger = trigger;
+      _userIgnoredWidgets.clear();
+      if (ignoredRebuildWidgets.isNotEmpty) {
+        _userIgnoredWidgets.addAll(ignoredRebuildWidgets);
+      }
+
+      if (!dk._enabled) return;
+
+      // ── Log adapter ────────────────────────────────────────────────────
+      final la = logAdapter ?? PrintLogAdapter();
+      dk._logAdapter = la;
+      la.onLogCallback = (entry) => dk.logStore.add(entry);
+      la.attach();
+
+      // ── HTTP adapters ──────────────────────────────────────────────────
+      for (final adapter in httpAdapters) {
+        adapter.onRequestCallback = dk.networkStore.onRequest;
+        adapter.onResponseCallback = dk.networkStore.onResponse;
+        adapter.interceptCallback = dk.mockEngine.intercept;
+        adapter.attach();
+        dk._httpAdapters.add(adapter);
+      }
+
+      // ── Journey tracking + observer notification for API calls ────────
+      dk._journeySub = dk.networkStore.stream.listen((entries) {
+        if (entries.isNotEmpty) {
+          final last = entries.last;
+          if (last.response != null) {
+            dk.journeyStore.record(ApiEvent(
+              DateTime.now(),
+              method: last.request.method,
+              url: last.request.url,
+              statusCode: last.response!.statusCode,
+            ));
+            // Notify observers about network activity
+            dk._notifyObserversNetwork(last);
+          }
+        }
+      });
+
+      // ── Storage adapters ────────────────────────────────────────────────
+      dk._storageAdapters.addAll(storageAdapters);
+
+      // ── Observers ───────────────────────────────────────────────────────
+      dk._observers.addAll(observers);
+
+      // ── Socket adapters ─────────────────────────────────────────────────
+      for (final adapter in socketAdapters) {
+        adapter.onEventCallback = dk.socketStore.onEvent;
+        adapter.attach();
+        dk._socketAdapters.add(adapter);
+      }
+
+      // ── FPS monitor ────────────────────────────────────────────────────
+      dk.fpsMonitor.start();
+      int lastFpsBroadcastMs = 0;
+      dk._fpsSub = dk.fpsMonitor.stream.listen((snapshot) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        // Broadcast every 500ms for near-real-time performance charts.
+        if (nowMs - lastFpsBroadcastMs >= 500) {
+          FirebaseStreamer.instance.broadcast('performance', {
+            'fps': snapshot.fps,
+            'avgFrameMs': snapshot.avgFrameMs,
+          });
+          lastFpsBroadcastMs = nowMs;
+        }
+      });
+
+      // ── Crash handling ─────────────────────────────────────────────────
+      dk._hookCrashHandlers();
+    } finally {
+      dev.Timeline.finishSync();
     }
-
-    // ── FPS monitor ────────────────────────────────────────────────────
-    dk.fpsMonitor.start();
-
-    // ── Crash handling ─────────────────────────────────────────────────
-    dk._hookCrashHandlers();
   }
 
   void _hookCrashHandlers() {
@@ -310,9 +330,12 @@ class BlackBox {
     FlutterError.onError = (FlutterErrorDetails details) {
       if (_enabled) {
         final now = DateTime.now();
+        final String exceptionStr = details.exceptionAsString();
+        final String fullDetails = details.toString();
+
         final crash = CrashEntry(
           id: 'crash_${_idCounter++}',
-          message: details.exceptionAsString(),
+          message: fullDetails,
           stackTrace: details.stack,
           library: details.library,
           timestamp: now,
@@ -320,10 +343,12 @@ class BlackBox {
         );
         crashStore.add(crash);
         _notifyObserversCrash(crash);
+
         BlackBox.log(
-          details.exceptionAsString(),
+          exceptionStr,
           level: LogLevel.error,
           tag: 'Crash',
+          data: {'details': fullDetails},
           error: details.exception,
           stackTrace: details.stack,
         );
@@ -608,6 +633,8 @@ class BlackBox {
 
     dk._journeySub?.cancel();
     dk._journeySub = null;
+    dk._fpsSub?.cancel();
+    dk._fpsSub = null;
     dk._logAdapter?.detach();
     dk._logAdapter = null;
     for (final a in dk._httpAdapters) {
@@ -638,6 +665,7 @@ class BlackBox {
   // ── Observer notifications ───────────────────────────────────────────
 
   void _notifyObserversCrash(CrashEntry crash) {
+    FirebaseStreamer.instance.broadcast('crashes', crash.toJson());
     for (final observer in _observers) {
       try {
         observer.onCrash(crash);
@@ -647,7 +675,24 @@ class BlackBox {
     }
   }
 
+  /// Broadcasts device info and app info to the companion web dashboard.
+  /// Called once when the companion session connects.
+  static Future<void> broadcastDeviceInfo() async {
+    try {
+      final deviceInfo = await _getDeviceInfo();
+      final appInfo = await _appInfo();
+      FirebaseStreamer.instance.deviceName = deviceInfo.deviceModel;
+      FirebaseStreamer.instance.broadcast('deviceInfo', {
+        ...deviceInfo.toJson(),
+        if (appInfo != null) ...appInfo,
+      });
+    } catch (_) {
+      // Don't crash the app if device info fails.
+    }
+  }
+
   void _notifyObserversLog(LogEntry log) {
+    FirebaseStreamer.instance.broadcast('logs', log.toJson());
     for (final observer in _observers) {
       try {
         observer.onLog(log);
@@ -658,6 +703,10 @@ class BlackBox {
   }
 
   void _notifyObserversNetwork(NetworkEntry entry) {
+    FirebaseStreamer.instance.broadcast('network', {
+      'request': entry.request.toJson(),
+      'response': entry.response?.toJson(),
+    });
     final res = entry.response;
     if (res == null) return;
 

@@ -222,6 +222,46 @@ class _Section extends StatelessWidget {
   final String title;
   final String content;
 
+  TextSpan _highlightJson(String text) {
+    const keyColor = Color(0xFF82AAFF);
+    const stringColor = Color(0xFFC3E88D);
+    const boolColor = Color(0xFFFF5370);
+    const nullColor = Color(0xFFF07178);
+    const numColor = Color(0xFFF78C6C);
+    const defaultColor = Colors.white60;
+
+    final RegExp jsonRegex = RegExp(
+        r'("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)');
+    final List<TextSpan> spans = [];
+    int lastEnd = 0;
+    for (final match in jsonRegex.allMatches(text)) {
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(
+            text: text.substring(lastEnd, match.start),
+            style: const TextStyle(color: defaultColor)));
+      }
+      final str = match.group(0)!;
+      Color color;
+      if (str.startsWith('"')) {
+        color = str.endsWith(':') ? keyColor : stringColor;
+      } else if (str == 'true' || str == 'false') {
+        color = boolColor;
+      } else if (str == 'null') {
+        color = nullColor;
+      } else {
+        color = numColor;
+      }
+      spans.add(TextSpan(text: str, style: TextStyle(color: color)));
+      lastEnd = match.end;
+    }
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(
+          text: text.substring(lastEnd),
+          style: const TextStyle(color: defaultColor)));
+    }
+    return TextSpan(children: spans);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -236,12 +276,11 @@ class _Section extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   letterSpacing: .5)),
           const SizedBox(height: 2),
-          Text(content,
-              style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.white60,
-                  fontFamily: 'monospace',
-                  height: 1.4)),
+          Text.rich(
+            _highlightJson(content),
+            style: const TextStyle(
+                fontSize: 10, fontFamily: 'monospace', height: 1.4),
+          ),
         ],
       ),
     );
@@ -265,7 +304,11 @@ class _DirectionBadge extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _color.withValues(alpha: 0.4), width: 0.5),
+        boxShadow: [
+          BoxShadow(color: _color.withValues(alpha: 0.2), blurRadius: 6),
+        ],
       ),
       child: Icon(_icon, size: 12, color: _color),
     );

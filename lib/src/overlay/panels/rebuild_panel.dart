@@ -223,12 +223,18 @@ class _RebuildTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(8),
+        color: _heatColor.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: _heatColor.withValues(alpha: 0.2),
           width: 0.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: _heatColor.withValues(alpha: 0.05),
+            blurRadius: 8,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,8 +325,14 @@ class _StatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.2),
+            blurRadius: 6,
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
