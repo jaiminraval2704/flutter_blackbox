@@ -381,8 +381,8 @@ class _LogTile extends StatelessWidget {
                       children: [
                         const SizedBox(height: 10),
                         const Text('Message',
-                            style: TextStyle(
-                                color: Colors.white54, fontSize: 12)),
+                            style:
+                                TextStyle(color: Colors.white54, fontSize: 12)),
                         const SizedBox(height: 4),
                         Text(
                           messageText,

@@ -460,12 +460,11 @@ class _ConnectionCodeDialogState extends State<_ConnectionCodeDialog>
                                         colors: [
                                           theme.accentColor,
                                           HSLColor.fromColor(theme.accentColor)
-                                              .withHue(
-                                                  (HSLColor.fromColor(
+                                              .withHue((HSLColor.fromColor(
                                                               theme.accentColor)
                                                           .hue +
                                                       30) %
-                                                      360)
+                                                  360)
                                               .toColor(),
                                         ],
                                       )
@@ -485,15 +484,15 @@ class _ConnectionCodeDialogState extends State<_ConnectionCodeDialog>
                             );
                           },
                           child: ElevatedButton(
-                            onPressed:
-                                _isCodeComplete && !_isConnecting ? _connect : null,
+                            onPressed: _isCodeComplete && !_isConnecting
+                                ? _connect
+                                : null,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               disabledBackgroundColor:
                                   theme.textMuted.withValues(alpha: 0.15),
                               foregroundColor: Colors.white,
-                              disabledForegroundColor:
-                                  theme.textMuted,
+                              disabledForegroundColor: theme.textMuted,
                               shadowColor: Colors.transparent,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -511,8 +510,8 @@ class _ConnectionCodeDialogState extends State<_ConnectionCodeDialog>
                                           strokeWidth: 2.5,
                                           valueColor:
                                               AlwaysStoppedAnimation<Color>(
-                                                  Colors.white.withValues(
-                                                      alpha: 0.9)),
+                                                  Colors.white
+                                                      .withValues(alpha: 0.9)),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -636,7 +635,8 @@ class _DigitBoxState extends State<_DigitBox> {
                 boxShadow: hasFocus
                     ? [
                         BoxShadow(
-                          color: widget.theme.accentColor.withValues(alpha: 0.15),
+                          color:
+                              widget.theme.accentColor.withValues(alpha: 0.15),
                           blurRadius: 8,
                           spreadRadius: 0,
                         ),
