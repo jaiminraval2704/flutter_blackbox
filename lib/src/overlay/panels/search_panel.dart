@@ -20,6 +20,7 @@ class SearchPanel extends StatefulWidget {
 
 class _SearchPanelState extends State<SearchPanel> {
   String _query = '';
+  String _input = '';
   final _controller = TextEditingController();
   Timer? _debounceTimer;
 
@@ -31,13 +32,14 @@ class _SearchPanelState extends State<SearchPanel> {
   }
 
   void _onSearchChanged(String value) {
-    // Update _query immediately so the UI responds (border, clear button,
-    // empty state). The expensive _search() runs on next build but only
-    // after the debounce prevents rapid-fire rebuilds.
-    setState(() => _query = value);
     _debounceTimer?.cancel();
+    _input = value;
+    if (value.isEmpty) {
+      if (_query.isNotEmpty) setState(() => _query = '');
+      return;
+    }
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() {});
+      if (mounted && _query != _input) setState(() => _query = _input);
     });
   }
 
@@ -86,8 +88,10 @@ class _SearchPanelState extends State<SearchPanel> {
       final tagMatch = entry.tag?.toLowerCase().contains(q) == true;
       final dataMatch =
           entry.data?.toString().toLowerCase().contains(q) == true;
+      final errorMatch =
+          entry.error?.toString().toLowerCase().contains(q) == true;
 
-      if (msgMatch || tagMatch || dataMatch) {
+      if (msgMatch || tagMatch || dataMatch || errorMatch) {
         results.add(_SearchResult(
           source: 'Logs',
           icon: Icons.article_outlined,
@@ -204,7 +208,7 @@ class _SearchPanelState extends State<SearchPanel> {
                       ? GestureDetector(
                           onTap: () {
                             _controller.clear();
-                            setState(() => _query = '');
+                            _onSearchChanged('');
                           },
                           child: const Icon(Icons.close,
                               color: Colors.white24, size: 14),

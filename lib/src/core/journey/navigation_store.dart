@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:collection';
 
+import '../capture/bounded_value.dart';
+
 /// A single entry in the navigation history.
 class NavigationEntry {
   const NavigationEntry({
@@ -50,11 +52,15 @@ class NavigationStore {
   final _history = ListQueue<NavigationEntry>();
   final _stack = <NavigationEntry>[];
   final _controller = StreamController<List<NavigationEntry>>.broadcast();
+  List<NavigationEntry>? _cachedHistory;
+  int _droppedEntryCount = 0;
+  int _truncatedPayloadCount = 0;
 
   // ── Public API ──────────────────────────────────────────────────────
 
   /// Full navigation history (oldest first).
-  List<NavigationEntry> get history => _history.toList(growable: false);
+  List<NavigationEntry> get history =>
+      _cachedHistory ??= List.unmodifiable(_history);
 
   /// The current live navigation stack (bottom = root, top = current).
   List<NavigationEntry> get currentStack => List.unmodifiable(_stack);
@@ -62,12 +68,26 @@ class NavigationStore {
   /// Stream that emits whenever navigation changes.
   Stream<List<NavigationEntry>> get stream => _controller.stream;
 
+  int get droppedEntryCount => _droppedEntryCount;
+  int get truncatedPayloadCount => _truncatedPayloadCount;
+  int get approximateRetainedBytes => _history.fold(
+        0,
+        (total, entry) =>
+            total +
+            (entry.routeName.length +
+                    entry.action.length +
+                    (entry.arguments?.toString().length ?? 0)) *
+                2,
+      );
+
   /// Record a push event.
   void onPush(String routeName, Object? arguments) {
+    routeName = _captureRouteName(routeName);
+    final capturedArguments = _captureArguments(arguments);
     final entry = NavigationEntry(
       routeName: routeName,
       action: 'push',
-      arguments: arguments,
+      arguments: capturedArguments,
       timestamp: DateTime.now(),
       stackDepth: _stack.length + 1,
     );
@@ -77,6 +97,8 @@ class NavigationStore {
 
   /// Record a pop event.
   void onPop(String routeName, Object? arguments) {
+    routeName = _captureRouteName(routeName);
+    final capturedArguments = _captureArguments(arguments);
     // Remove the top of the stack if it matches
     if (_stack.isNotEmpty) {
       _stack.removeLast();
@@ -84,7 +106,7 @@ class NavigationStore {
     final entry = NavigationEntry(
       routeName: routeName,
       action: 'pop',
-      arguments: arguments,
+      arguments: capturedArguments,
       timestamp: DateTime.now(),
       stackDepth: _stack.length,
     );
@@ -94,6 +116,8 @@ class NavigationStore {
   /// Record a replace event.
   void onReplace(
       String newRouteName, Object? newArguments, String? oldRouteName) {
+    newRouteName = _captureRouteName(newRouteName);
+    final capturedArguments = _captureArguments(newArguments);
     // Replace the top of the stack
     if (_stack.isNotEmpty) {
       _stack.removeLast();
@@ -101,7 +125,7 @@ class NavigationStore {
     final entry = NavigationEntry(
       routeName: newRouteName,
       action: 'replace',
-      arguments: newArguments,
+      arguments: capturedArguments,
       timestamp: DateTime.now(),
       stackDepth: _stack.length + 1,
     );
@@ -111,21 +135,26 @@ class NavigationStore {
 
   /// Record a remove event.
   void onRemove(String routeName, Object? arguments) {
+    routeName = _captureRouteName(routeName);
+    final capturedArguments = _captureArguments(arguments);
     _stack.removeWhere((e) => e.routeName == routeName);
     final entry = NavigationEntry(
       routeName: routeName,
       action: 'remove',
-      arguments: arguments,
+      arguments: capturedArguments,
       timestamp: DateTime.now(),
       stackDepth: _stack.length,
     );
     _addToHistory(entry);
   }
 
-  void clear() {
+  void clear({bool notify = true}) {
     _history.clear();
     _stack.clear();
-    _notify();
+    _cachedHistory = null;
+    _droppedEntryCount = 0;
+    _truncatedPayloadCount = 0;
+    if (notify) _notify();
   }
 
   void dispose() {
@@ -135,9 +164,25 @@ class NavigationStore {
   // ── Private ─────────────────────────────────────────────────────────
 
   void _addToHistory(NavigationEntry entry) {
-    if (_history.length >= capacity) _history.removeFirst();
+    if (_history.length >= capacity) {
+      _history.removeFirst();
+      _droppedEntryCount++;
+    }
     _history.addLast(entry);
+    _cachedHistory = null;
     _notify();
+  }
+
+  Object? _captureArguments(Object? arguments) {
+    final snapshot = captureBoundedValue(arguments, maxBytes: 16 * 1024);
+    if (snapshot.truncated) _truncatedPayloadCount++;
+    return snapshot.value;
+  }
+
+  String _captureRouteName(String routeName) {
+    final captured = captureBoundedString(routeName, maxBytes: 8 * 1024);
+    if (captured != routeName) _truncatedPayloadCount++;
+    return captured;
   }
 
   void _notify() {

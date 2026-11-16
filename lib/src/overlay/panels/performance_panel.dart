@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/performance/fps_monitor.dart';
 import '../../core/performance/memory_info.dart' as mem;
 import '../../blackbox.dart';
+import '../../companion/firebase_streamer.dart';
 import '../widgets/blackbox_colors.dart';
 
 class PerformancePanel extends StatelessWidget {
@@ -40,7 +41,7 @@ class PerformancePanel extends StatelessWidget {
                         _MetricCard(
                           label: 'Worst frame',
                           value: '${snap.worstFrameMs.toStringAsFixed(1)}ms',
-                          color: snap.worstFrameMs > FpsSnapshot.budgetMs
+                          color: snap.worstFrameMs > snap.budgetMs
                               ? BlackBoxColors.error
                               : BlackBoxColors.success,
                         ),
@@ -53,16 +54,32 @@ class PerformancePanel extends StatelessWidget {
               // ── Frame budget bar ─────────────────────────────────────
               _FrameBudgetBar(snap: snap),
               const SizedBox(height: 16),
+              if (snap.totalAvgMs > 0) ...[
+                _FrameTimingBreakdown(snap: snap),
+                const SizedBox(height: 16),
+              ],
               // ── Rolling FPS graph ────────────────────────────────────
               const _SectionTitle('Rolling frame durations (60 frames)'),
               const SizedBox(height: 8),
               SizedBox(
                 height: 120,
-                child: _FpsGraph(samples: snap.samples),
+                child:
+                    _FpsGraph(samples: snap.samples, budgetMs: snap.budgetMs),
               ),
               const SizedBox(height: 12),
               // ── Jank summary ─────────────────────────────────────────
               _JankSummary(snap: snap),
+              const SizedBox(height: 16),
+              // ── Session summary ────────────────────────────────────
+              if (snap.totalFrames > 0) ...[
+                _SessionSummaryCard(snap: snap),
+                const SizedBox(height: 16),
+              ],
+              ValueListenableBuilder<bool>(
+                valueListenable: BlackBox.instance.captureStateListenable,
+                builder: (context, capturing, _) =>
+                    _CaptureSummaryCard(capturing: capturing),
+              ),
               const SizedBox(height: 16),
               // ── Memory usage ──────────────────────────────────────────
               const _MemoryUsageCard(),
@@ -70,6 +87,61 @@ class PerformancePanel extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _FrameTimingBreakdown extends StatelessWidget {
+  const _FrameTimingBreakdown({required this.snap});
+
+  final FpsSnapshot snap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          _TimingValue(label: 'UI', value: snap.buildAvgMs),
+          _TimingValue(label: 'Raster', value: snap.rasterAvgMs),
+          _TimingValue(label: 'Total', value: snap.totalAvgMs),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimingValue extends StatelessWidget {
+  const _TimingValue({required this.label, required this.value});
+
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 9, color: Colors.white38),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${value.toStringAsFixed(1)}ms',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -241,12 +313,15 @@ class _FrameBudgetBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = (snap.avgFrameMs / FpsSnapshot.budgetMs).clamp(0.0, 2.0);
+    final budget = snap.budgetMs > 0 ? snap.budgetMs : 16.67;
+    final pct = (snap.avgFrameMs / budget).clamp(0.0, 2.0);
+    final targetFps = (1000 / budget).round();
     final color = BlackBoxColors.fpsColor(snap.fps);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle('Frame budget usage (16.67ms at 60fps)'),
+        _SectionTitle(
+            'Frame budget usage (${budget.toStringAsFixed(2)}ms at ${targetFps}fps)'),
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
@@ -268,8 +343,9 @@ class _FrameBudgetBar extends StatelessWidget {
 }
 
 class _FpsGraph extends StatelessWidget {
-  const _FpsGraph({required this.samples});
+  const _FpsGraph({required this.samples, required this.budgetMs});
   final List<double> samples;
+  final double budgetMs;
 
   @override
   Widget build(BuildContext context) {
@@ -280,25 +356,27 @@ class _FpsGraph extends StatelessWidget {
       );
     }
     return CustomPaint(
-      painter: _FpsGraphPainter(samples: samples),
+      painter: _FpsGraphPainter(samples: samples, budgetMs: budgetMs),
       size: Size.infinite,
     );
   }
 }
 
 class _FpsGraphPainter extends CustomPainter {
-  const _FpsGraphPainter({required this.samples});
+  const _FpsGraphPainter({required this.samples, required this.budgetMs});
   final List<double> samples;
+  final double budgetMs;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (samples.isEmpty) return;
 
-    final maxMs = samples.reduce((a, b) => a > b ? a : b).clamp(0.0, 100.0);
-    const budget = FpsSnapshot.budgetMs;
+    final sampleMax = samples.reduce((a, b) => a > b ? a : b);
+    final budget = budgetMs > 0 ? budgetMs : 16.67;
+    final maxMs = (sampleMax <= 0.0 ? budget : sampleMax).clamp(1.0, 100.0);
 
     // Budget line
-    final budgetY = size.height * (1 - (budget / maxMs).clamp(0, 1));
+    final budgetY = size.height * (1 - (budget / maxMs).clamp(0.0, 1.0));
     canvas.drawLine(
       Offset(0, budgetY),
       Offset(size.width, budgetY),
@@ -340,7 +418,8 @@ class _FpsGraphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FpsGraphPainter old) => !listEquals(old.samples, samples);
+  bool shouldRepaint(_FpsGraphPainter old) =>
+      !listEquals(old.samples, samples) || old.budgetMs != budgetMs;
 }
 
 class _JankSummary extends StatelessWidget {
@@ -393,6 +472,174 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+// ponytail: reuses _MetricCard and _SectionTitle, no new state
+class _SessionSummaryCard extends StatelessWidget {
+  const _SessionSummaryCard({required this.snap});
+  final FpsSnapshot snap;
+
+  @override
+  Widget build(BuildContext context) {
+    final jankPct = snap.totalFrames > 0
+        ? (snap.totalJankFrames / snap.totalFrames * 100)
+        : 0.0;
+    final mins = snap.sessionDuration.inMinutes;
+    final secs = snap.sessionDuration.inSeconds % 60;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Session summary'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'Total frames',
+                value: '${snap.totalFrames}',
+                color: Colors.white54,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricCard(
+                label: 'Jank %',
+                value: '${jankPct.toStringAsFixed(1)}%',
+                color: jankPct > 5
+                    ? BlackBoxColors.error
+                    : jankPct > 1
+                        ? BlackBoxColors.warning
+                        : BlackBoxColors.success,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'p95 frame',
+                value: '${snap.sessionP95Ms.toStringAsFixed(1)}ms',
+                color: snap.sessionP95Ms > snap.budgetMs
+                    ? BlackBoxColors.error
+                    : BlackBoxColors.success,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricCard(
+                label: 'Session',
+                value: '${mins}m ${secs}s',
+                color: Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture footprint
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CaptureSummaryCard extends StatelessWidget {
+  const _CaptureSummaryCard({required this.capturing});
+
+  final bool capturing;
+
+  @override
+  Widget build(BuildContext context) {
+    final blackBox = BlackBox.instance;
+    final entryCount = blackBox.networkStore.entries.length +
+        blackBox.logStore.entries.length +
+        blackBox.socketStore.events.length +
+        blackBox.crashStore.entries.length +
+        blackBox.navigationStore.history.length +
+        blackBox.journeyStore.events.length +
+        blackBox.rebuildStore.counts.length;
+    final retainedBytes = blackBox.networkStore.approximateRetainedBytes +
+        blackBox.logStore.approximateRetainedBytes +
+        blackBox.socketStore.approximateRetainedBytes +
+        blackBox.crashStore.approximateRetainedBytes +
+        blackBox.navigationStore.approximateRetainedBytes +
+        blackBox.journeyStore.approximateRetainedBytes +
+        blackBox.rebuildStore.approximateRetainedBytes;
+    final dropped = blackBox.networkStore.droppedEntryCount +
+        blackBox.logStore.droppedEntryCount +
+        blackBox.socketStore.droppedEntryCount +
+        blackBox.crashStore.droppedEntryCount +
+        blackBox.navigationStore.droppedEntryCount +
+        blackBox.journeyStore.droppedEntryCount +
+        blackBox.rebuildStore.droppedEntryCount +
+        FirebaseStreamer.instance.droppedEventCount;
+    final truncated = blackBox.networkStore.truncatedPayloadCount +
+        blackBox.logStore.truncatedPayloadCount +
+        blackBox.socketStore.truncatedPayloadCount +
+        blackBox.crashStore.truncatedPayloadCount +
+        blackBox.navigationStore.truncatedPayloadCount +
+        blackBox.journeyStore.truncatedPayloadCount +
+        FirebaseStreamer.instance.truncatedEventCount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Capture footprint'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'Status',
+                value: capturing ? 'Recording' : 'Paused',
+                color:
+                    capturing ? BlackBoxColors.success : BlackBoxColors.warning,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricCard(
+                label: 'Entries',
+                value: '$entryCount',
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                label: 'Approx. retained',
+                value: _formatCaptureBytes(retainedBytes),
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricCard(
+                label: 'Dropped / trimmed',
+                value: '$dropped / $truncated',
+                color: dropped + truncated > 0
+                    ? BlackBoxColors.warning
+                    : Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+String _formatCaptureBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Memory usage card
 // ─────────────────────────────────────────────────────────────────────────────
@@ -406,9 +653,7 @@ class _MemoryUsageCard extends StatefulWidget {
 
 class _MemoryUsageCardState extends State<_MemoryUsageCard> {
   int _currentRss = 0;
-  int _heapUsed = 0;
-  int _heapCapacity = 0;
-  int _externalUsage = 0;
+  int _peakRss = 0;
 
   @override
   void initState() {
@@ -422,12 +667,10 @@ class _MemoryUsageCardState extends State<_MemoryUsageCard> {
       // ignore: avoid_dynamic_calls
       final currentRss = _getRss();
       final maxRss = _getMaxRss();
-      if (currentRss > 0 || maxRss > 0) {
+      if ((currentRss > 0 || maxRss > 0) && mounted) {
         setState(() {
           _currentRss = currentRss;
-          _heapCapacity = maxRss;
-          _heapUsed = currentRss;
-          _externalUsage = (maxRss - currentRss).abs();
+          _peakRss = maxRss;
         });
       }
     } catch (_) {
@@ -462,16 +705,9 @@ class _MemoryUsageCardState extends State<_MemoryUsageCard> {
 
   @override
   Widget build(BuildContext context) {
-    final usedMb = _heapUsed / (1024 * 1024);
-    final capacityMb = _heapCapacity / (1024 * 1024);
-    final usageRatio =
-        _heapCapacity > 0 ? (_heapUsed / _heapCapacity).clamp(0.0, 1.0) : 0.0;
-
-    final barColor = usageRatio < 0.6
-        ? BlackBoxColors.success
-        : usageRatio < 0.85
-            ? BlackBoxColors.warning
-            : BlackBoxColors.error;
+    final baseline = BlackBox.instance.captureBaselineRss;
+    final delta = baseline > 0 ? _currentRss - baseline : 0;
+    const barColor = Colors.white54;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,18 +739,6 @@ class _MemoryUsageCardState extends State<_MemoryUsageCard> {
           ),
           child: Column(
             children: [
-              // Usage bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: usageRatio,
-                  minHeight: 6,
-                  backgroundColor: Colors.white10,
-                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Stats row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -525,26 +749,26 @@ class _MemoryUsageCardState extends State<_MemoryUsageCard> {
                     color: barColor,
                   ),
                   _MemoryStat(
-                    label: 'Max RSS',
-                    value: _formatBytes(_heapCapacity),
+                    label: 'Peak RSS',
+                    value: _formatBytes(_peakRss),
                     icon: Icons.storage,
                     color: Colors.white54,
                   ),
                   _MemoryStat(
-                    label: 'Delta',
-                    value: _formatBytes(_externalUsage),
+                    label: 'Session change',
+                    value: baseline == 0
+                        ? 'Unavailable'
+                        : '${delta >= 0 ? '+' : '−'}${_formatBytes(delta.abs())}',
                     icon: Icons.swap_horiz,
                     color: Colors.white38,
                   ),
                 ],
               ),
-              if (capacityMb > 0) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '${usedMb.toStringAsFixed(1)} MB / ${capacityMb.toStringAsFixed(1)} MB  •  ${(usageRatio * 100).toStringAsFixed(0)}% used',
-                  style: TextStyle(fontSize: 9, color: barColor),
-                ),
-              ],
+              const SizedBox(height: 8),
+              const Text(
+                'Process memory; session change is not BlackBox-only usage.',
+                style: TextStyle(fontSize: 9, color: Colors.white38),
+              ),
             ],
           ),
         ),

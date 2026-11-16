@@ -1,10 +1,11 @@
 # Flutter BlackBox 🐞
 
 [![pub package](https://img.shields.io/pub/v/flutter_blackbox.svg)](https://pub.dev/packages/flutter_blackbox)
+[![pub points](https://img.shields.io/pub/points/flutter_blackbox)](https://pub.dev/packages/flutter_blackbox/score)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.7.0)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
+[![CI](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml/badge.svg?branch=main&v=0.8.0)](https://github.com/jaiminraval2704/flutter_blackbox/actions/workflows/ci.yml)
 
-An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, API mocking, live logs, FPS monitor, rebuild tracker, storage inspector, crash reports, and QA tools. **Zero runtime cost** in release builds. **Zero optional dependencies** — the CLI generates only the adapters you need.
+An all-in-one **in-app debug & QA overlay** for Flutter — network inspection, API mocking, live logs, frame performance, rebuild tracking, storage inspection, crash reports, and QA tools. Capture hooks are disabled in release builds. Adapter-specific packages are generated only for the integrations your app uses.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/jaiminraval2704/flutter_blackbox/main/assets/package_preview.gif" height="400" alt="Flutter BlackBox Preview" />
@@ -18,24 +19,26 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 
 ---
 
-**BlackBox** is the ultimate native debug overlay and remote dashboard for Flutter apps. Inspect network requests, debug logs, widget rebuilds, feature flags, crashes, and device telemetry—either right on your device screen via the **Cyberpunk-styled overlay**, or remotely on your desktop browser using the **Web Companion**.
+**BlackBox** is a native debug overlay and remote dashboard for Flutter apps. Inspect network requests, debug logs, widget rebuilds, crashes, and device details on your device, or stream supported diagnostics to the **Web Companion**.
 
 ## ✨ Features
 
-- **🌐 Network Inspector** — Intercept HTTP/Dio/Socket requests. View headers, timing metrics, response sizes, and a beautifully syntax-highlighted **Interactive JSON Tree**.
-- **💻 Remote Web Companion** — Beam real-time logs and network calls to the [BlackBox Web Dashboard](https://flutter-blackbox-companion.web.app) via Firebase or local Wi-Fi.
-- **🚀 Cyberpunk Native Overlay** — A buttery-smooth, frosted-glass (`BackdropFilter`) overlay with velocity-snapped resizing that floats over your app without disrupting the UI.
-- **⚡ Performance & Rebuilds** — Track live FPS, spot frame drops, and monitor aggressive widget rebuilds.
+- **🌐 Network Inspector** — Capture HTTP and Dio requests, plus Socket.IO events through their adapters. Inspect headers, timing metrics, response sizes, and JSON bodies.
+- **💻 Remote Web Companion** — Stream supported diagnostics to the [BlackBox Web Dashboard](https://flutter-blackbox-companion.web.app) through Firebase.
+- **🚀 Native Overlay** — A frosted-glass (`BackdropFilter`) overlay with resizable panels that sits above your app.
+- **⚡ Performance & Rebuilds** — Track FPS, UI and raster frame times, jank, and widget rebuilds.
+- **⏯️ Capture Sessions** — Pause and resume collection or clear captured data from the existing header, without adding a tab.
+- **🧠 Memory Controls** — Detach and bound captured payloads, and inspect retained-entry estimates plus dropped and truncated counts.
 - **🗄️ Storage Inspector** — View and edit `SharedPreferences` or other local databases securely.
 - **🔒 Privacy First** — Auto-redacts sensitive keys (passwords, tokens) before they ever hit the memory store.
-- **🛠️ Zero Dependencies** — The core `flutter_blackbox` package has zero optional dependencies. It generates adapters specifically for what you use.
+- **🛠️ Adapter Generation** — Generate only the adapters needed for your app's HTTP, socket, logging, and storage integrations.
 
 | Panel | Description |
 |-------|-------------|
 | **🌐 Network** | Real-time HTTP/Dio interception. Headers, payloads, status codes, timing bars, cURL export, HAR export. Swipe to dismiss individual entries. |
 | **🎛 Mocking** | Intercept and replace API calls with local JSON responses. Simulate slow networks with throttle slider. |
 | **📋 Logs** | Auto-captures `debugPrint`/`print`. Manual logging with levels and tags. Swipe to dismiss, color-coded accent borders. |
-| **⚡ Performance** | Live FPS graph, jank detection, frame budget visualization. |
+| **⚡ Performance** | Live FPS graph, UI/raster/total frame timings, jank and frame-budget metrics, capture footprint, and process RSS. |
 | **🔄 Rebuilds** | Track widget rebuild counts — auto-detect ALL rebuilds or wrap specific widgets. Pull-to-refresh resets counts. |
 | **💾 Storage** | Inspect, search, edit, and delete key-value pairs. Sensitive data auto-redacted. Supports SharedPreferences, GetStorage, Hive, etc. |
 | **🔌 Socket IO** | Auto-capture all incoming Socket.IO events. Zero code changes. |
@@ -51,19 +54,19 @@ An all-in-one **in-app debug & QA overlay** for Flutter — network inspector, A
 
 ```yaml
 dependencies:
-  flutter_blackbox: ^0.7.0
+  flutter_blackbox: ^0.8.0
 ```
 
 ---
 
 ## 🛡️ Zero Impact in Production
 
-BlackBox is designed to be completely invisible and zero-cost in release builds.
+BlackBox disables diagnostic capture in release builds by default.
 
-- **Auto-disabled via `kDebugMode`**: `BlackBox.setup()` exits immediately in release mode. No adapters are attached, no listeners are registered.
+- **Auto-disabled via `kDebugMode`**: Unless explicitly enabled, `BlackBox.setup()` does not attach adapters or install capture hooks in release mode.
 - **Zero Widget Tree Overhead**: The `BlackBoxOverlay` widget returns your raw `child` in release mode. It does not insert any `Stack`, `Overlay`, or `Builder` into the widget tree.
-- **Tree-Shaking Guarantees**: Heavy features like Firebase streaming are wrapped in `kDebugMode` guards, allowing the Dart compiler to tree-shake them entirely from your release binary.
-- **Memory Caps**: All internal stores (Logs, Network, Crashes) have strict capacity limits (e.g., max 500 network calls) and automatically truncate payloads exceeding 100KB to prevent memory leaks during intense debug sessions.
+- **Bounded retention**: Stores limit the number of retained entries, and large payloads are detached and capped before they are retained. Network bodies are limited to 100 KB; other payload types have their own limits.
+- **Session pause**: `BlackBox.pauseCapture()` pauses new diagnostic events while keeping attached adapters available so collection resumes immediately.
 
 ---
 
@@ -84,7 +87,7 @@ void main() {
 }
 ```
 
-This gives you: logs, crashes, FPS, rebuilds, device info, and QA reports out of the box.
+This gives you logs, crashes, FPS, rebuild tracking, device details, and QA reports. Use `BlackBox.pauseCapture()`, `BlackBox.resumeCapture()`, and `BlackBox.clearCapturedData()` to control the session. These controls are also available in the existing overlay header.
 
 ---
 
@@ -211,13 +214,41 @@ BlackBox.setup(
 
 ---
 
-## ✨ What's New in 0.7.0
+## ⏯️ Capture Sessions
 
-- **BlackBox Companion Web App** — Connect your app to our new [Web Companion Dashboard](https://flutter-blackbox-companion.web.app) to view logs, network requests, and device info on your desktop browser in real-time!
-- **"Cyberpunk" UI Overhaul** — The entire BlackBox overlay upgraded to a premium aesthetic featuring glowing neon accents, deep dark backgrounds, and frosted-glass panels (`BackdropFilter`).
-- **Interactive JSON Tree** — The Network Panel now features a fully interactive, collapsible JSON tree. Syntax-highlighted keys (neon blue), strings (neon green), booleans (neon pink), and nulls (soft red).
-- **Scanner Quick-Action** — Added a new scanner icon right next to the pin icon in the main overlay header to jump instantly to the "Link" companion setup tab.
-- **Velocity Snapping** — The draggable overlay top-handle now respects swipe velocity, allowing you to flick the panel up to instantly snap it to maximum height or flick down to snap it to its resting height.
+Pause or resume new diagnostics without detaching adapters, and clear the current session without adding another panel tab:
+
+```dart
+BlackBox.pauseCapture();
+BlackBox.resumeCapture();
+BlackBox.clearCapturedData();
+
+if (BlackBox.isCapturing) {
+  // BlackBox is accepting new events.
+}
+```
+
+Pausing stops new capture while preserving existing data. A network response can still finish a request that was captured before pause. Clearing asks for confirmation in the overlay and keeps the current paused or recording state. The Performance panel shows approximate retained memory, dropped or truncated items, and process RSS; RSS is process-wide and is not BlackBox-only memory.
+
+For unnamed imperative routes, provide a stable diagnostic name without executing the route builder:
+
+```dart
+BlackBox.setup(
+  routeNameResolver: (route) => route.settings.arguments == '/checkout'
+      ? 'CheckoutPage'
+      : null,
+);
+```
+
+---
+
+## ✨ What's New in 0.8.0
+
+- Pause, resume, and clear capture from the existing header; the tab layout stays the same.
+- Captured payloads are detached and bounded before storage or companion transmission.
+- FPS monitoring reports UI, raster, total frame times, and jank; capture metrics include retained-size estimates and dropped/truncated counts.
+- Repeated setup and disposal preserve store subscriptions and release adapters, timers, Firebase work, and overlay resources.
+- Route builders are no longer invoked to guess route names. Use `routeNameResolver` to label unnamed imperative routes.
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_blackbox/src/core/network/curl_exporter.dart';
+import 'package:flutter_blackbox/src/core/network/har_exporter.dart';
 import 'package:flutter_blackbox/src/core/network/network_request.dart';
 import 'package:flutter_blackbox/src/core/network/network_response.dart';
 import 'package:flutter_blackbox/src/core/network/network_store.dart';
@@ -73,6 +77,114 @@ void main() {
       await sub.cancel();
     });
 
+    test('completed stream emits every response in a burst', () async {
+      final completed = <String>[];
+      final sub = store.completedStream.listen(
+        (entry) => completed.add(entry.request.id),
+      );
+      for (var i = 0; i < 3; i++) {
+        store.onRequest(req('r$i'));
+        store.onResponse(res('r$i', 200));
+      }
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(completed, ['r0', 'r1', 'r2']);
+      await sub.cancel();
+    });
+
+    test('completed stream emits a request only once', () async {
+      final completed = <String>[];
+      final sub = store.completedStream.listen(
+        (entry) => completed.add(entry.request.id),
+      );
+      store.onRequest(req('r1'));
+
+      store.onResponse(res('r1', 200));
+      store.onResponse(res('r1', 201));
+
+      expect(completed, ['r1']);
+      expect(store.entries.single.response?.statusCode, 201);
+      await sub.cancel();
+    });
+
+    test('clear preserves listeners and immediately emits empty state',
+        () async {
+      final counts = <int>[];
+      final sub = store.stream.listen((entries) => counts.add(entries.length));
+      store.onRequest(req('r1'));
+
+      store.clear();
+      await Future<void>.delayed(Duration.zero);
+      store.onRequest(req('r2'));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(counts, [0, 1]);
+      await sub.cancel();
+    });
+
+    test('snapshots caller-owned payloads before retention', () {
+      final body = <String, Object?>{
+        'items': <Object?>[1, 2],
+      };
+      final headers = <String, dynamic>{
+        'x-list': <Object?>['a']
+      };
+      store.onRequest(NetworkRequest(
+        id: 'r1',
+        method: 'POST',
+        url: 'https://api.example.com',
+        timestamp: DateTime.now(),
+        headers: headers,
+        body: body,
+      ));
+
+      (body['items'] as List<Object?>).add(3);
+      (headers['x-list'] as List<Object?>).add('b');
+
+      expect(jsonDecode(store.entries.single.request.body as String), {
+        'items': [1, 2],
+      });
+      expect(store.entries.single.request.headers['x-list'], ['a']);
+    });
+
+    test('bounds cyclic bodies without throwing', () {
+      final body = <Object?>[];
+      body.add(body);
+
+      expect(
+        () => store.onRequest(NetworkRequest(
+          id: 'r1',
+          method: 'POST',
+          url: 'https://api.example.com',
+          timestamp: DateTime.now(),
+          body: body,
+        )),
+        returnsNormally,
+      );
+      expect(store.truncatedPayloadCount, greaterThan(0));
+      expect(store.approximateRetainedBytes, greaterThan(0));
+    });
+
+    test('keeps encoded bodies within the byte limit after JSON escaping', () {
+      final body = {
+        'items': List<String>.filled(200, '\u0000' * 1000),
+      };
+
+      store.onRequest(NetworkRequest(
+        id: 'r1',
+        method: 'POST',
+        url: 'https://api.example.com',
+        timestamp: DateTime.now(),
+        body: body,
+      ));
+
+      final stored = store.entries.single.request.body as String;
+      expect(utf8.encode(stored).length, lessThanOrEqualTo(100 * 1024));
+      expect(() => jsonDecode(stored), returnsNormally);
+      expect(store.truncatedPayloadCount, greaterThan(0));
+    });
+
     test('toJson serialises both request and response', () {
       store.onRequest(req('r1'));
       store.onResponse(res('r1', 200));
@@ -123,6 +235,46 @@ void main() {
         responseSizeBytes: 1024 * 1024 * 2,
       );
       expect(r3.formattedSize, '2.0 MB');
+    });
+
+    test('HarExporter handles unencodable/arbitrary bodies gracefully', () {
+      final request = NetworkRequest(
+        id: 'r_har',
+        method: 'POST',
+        url: 'https://api.example.com/test',
+        timestamp: DateTime.now(),
+        headers: {'Content-Type': 'application/json'},
+        body: {'key': 'value'},
+      );
+      final response = NetworkResponse(
+        requestId: 'r_har',
+        statusCode: 200,
+        headers: {'content-type': 'application/json'},
+        durationMs: 150,
+        body: '{"status": "ok"}',
+      );
+      final entry = NetworkEntry(request: request)..response = response;
+
+      final har = HarExporter.toHar([entry]);
+      expect(har, contains('"version": "0.8.0"'));
+      expect(har, contains('https://api.example.com/test'));
+    });
+
+    test('CurlExporter handles non-encodable bodies gracefully', () {
+      final request = NetworkRequest(
+        id: 'r_curl',
+        method: 'POST',
+        url: 'https://api.example.com/login',
+        timestamp: DateTime.now(),
+        headers: {'Authorization': 'Bearer token123'},
+        queryParameters: {'v': '1'},
+        body: {'username': 'test'},
+      );
+      final curl = CurlExporter.toCurl(request);
+      expect(
+          curl, contains("curl -X POST 'https://api.example.com/login?v=1'"));
+      expect(curl, contains("-H 'Authorization: Bearer token123'"));
+      expect(curl, contains("-d '{\"username\":\"test\"}'"));
     });
   });
 }

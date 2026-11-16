@@ -165,5 +165,113 @@ void main() {
         expect(find.text('QA'), findsWidgets);
       });
     });
+
+    testWidgets('capture can pause and resume from the existing header',
+        (tester) async {
+      await runTest(tester, () async {
+        BlackBox.setup(enabled: true);
+        await pumpOverlay(tester);
+        BlackBox.open();
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Pause capture'));
+        await tester.pump();
+        expect(BlackBox.isCapturing, isFalse);
+        expect(find.byTooltip('Resume capture'), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Resume capture'));
+        await tester.pump();
+        expect(BlackBox.isCapturing, isTrue);
+      });
+    });
+
+    testWidgets('overlay header renders without overflow on small screens',
+        (tester) async {
+      for (final width in [320.0, 360.0, 390.0]) {
+        tester.view.physicalSize = Size(width, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
+        addTearDown(() => tester.view.resetDevicePixelRatio());
+
+        await runTest(tester, () async {
+          BlackBox.setup(enabled: true);
+          await pumpOverlay(tester);
+          BlackBox.open();
+          await tester.pumpAndSettle();
+
+          expect(find.byTooltip('Pause capture'), findsOneWidget);
+          expect(find.byTooltip('Capture actions'), findsOneWidget);
+          expect(find.byTooltip('Search'), findsOneWidget);
+          expect(find.byTooltip('Pin to HUD'), findsOneWidget);
+          expect(find.byTooltip('Close'), findsOneWidget);
+        });
+      }
+    });
+
+    testWidgets('floating button can be dragged without error', (tester) async {
+      await runTest(tester, () async {
+        BlackBox.setup(
+          enabled: true,
+          trigger: const BlackBoxTrigger.floatingButton(),
+        );
+        await pumpOverlay(tester);
+
+        final buttonFinder = find.byIcon(Icons.bug_report);
+        expect(buttonFinder, findsOneWidget);
+
+        // Drag the button
+        await tester.drag(buttonFinder, const Offset(-100, -100));
+        await tester.pumpAndSettle();
+
+        expect(buttonFinder, findsOneWidget);
+      });
+    });
+
+    testWidgets('pinning to HUD mode displays live counters and unpins cleanly',
+        (tester) async {
+      await runTest(tester, () async {
+        BlackBox.setup(
+          enabled: true,
+          trigger: const BlackBoxTrigger.floatingButton(),
+        );
+        await pumpOverlay(tester);
+
+        BlackBox.open();
+        await tester.pumpAndSettle();
+
+        // Tap pin to HUD
+        await tester.tap(find.byTooltip('Pin to HUD'));
+        await tester.pumpAndSettle();
+
+        // Speed icon should be visible in HUD
+        expect(find.byIcon(Icons.speed), findsOneWidget);
+        expect(find.byIcon(Icons.wifi), findsOneWidget);
+
+        // Tap close / unpin icon on HUD
+        await tester.tap(find.byIcon(Icons.close));
+        await tester.pumpAndSettle();
+
+        // Should return to normal floating bug button
+        expect(find.byIcon(Icons.bug_report), findsOneWidget);
+      });
+    });
+
+    testWidgets(
+        'floating button mounts safely when screen size is zero or very small',
+        (tester) async {
+      tester.view.physicalSize = const Size(0, 0);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+      addTearDown(() => tester.view.resetDevicePixelRatio());
+
+      await runTest(tester, () async {
+        BlackBox.setup(
+          enabled: true,
+          trigger: const BlackBoxTrigger.floatingButton(),
+        );
+        await pumpOverlay(tester);
+        expect(tester.takeException(), isNull);
+      });
+    });
   });
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../widgets/blackbox_theme.dart';
+import '../widgets/blackbox_toast.dart';
 
 class DevicePanel extends StatelessWidget {
   const DevicePanel({super.key});
@@ -16,6 +18,19 @@ class DevicePanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: GestureDetector(
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: _buildDeviceReport(mq)));
+              BlackBoxToast.show(context, 'Device info copied');
+            },
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Icon(Icons.copy_all, size: 18, color: Colors.white38),
+            ),
+          ),
+        ),
         _TelemetrySection(
           theme: theme,
           title: 'PLATFORM',
@@ -84,6 +99,32 @@ class DevicePanel extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  // ponytail: stateless — Clipboard.setData doesn't need setState
+  String _buildDeviceReport(MediaQueryData mq) {
+    final size = mq.size;
+    final dpr = mq.devicePixelRatio;
+    return '''
+PLATFORM
+  OS: ${_osVersion()}
+  Platform: ${defaultTargetPlatform.name.toUpperCase()}
+  Mode: ${kDebugMode ? 'DEBUG' : kProfileMode ? 'PROFILE' : 'RELEASE'}
+  Web: ${kIsWeb ? 'YES' : 'NO'}
+
+SCREEN
+  Size: ${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)} dp
+  Physical: ${(size.width * dpr).toStringAsFixed(0)} × ${(size.height * dpr).toStringAsFixed(0)} px
+  Pixel ratio: ${dpr}x
+  Text scale: ${mq.textScaler.scale(1).toStringAsFixed(2)}x
+  Brightness: ${mq.platformBrightness.name.toUpperCase()}
+  Padding: T:${mq.padding.top.toStringAsFixed(0)} B:${mq.padding.bottom.toStringAsFixed(0)}
+
+APP
+  Debug: ${kDebugMode.toString().toUpperCase()}
+  Profile: ${kProfileMode.toString().toUpperCase()}
+'''
+        .trim();
   }
 
   String _osVersion() {

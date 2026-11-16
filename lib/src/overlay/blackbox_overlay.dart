@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui' show ImageByteFormat, ImageFilter;
+import 'dart:ui' as ui show Image;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,7 +20,9 @@ import 'panels/socket_panel.dart';
 import 'panels/storage_panel.dart';
 import 'panels/device_panel.dart';
 import 'panels/qa_panel.dart';
+import 'panels/qa/qa_annotation_layer.dart';
 import 'panels/companion_panel.dart';
+import 'widgets/blackbox_colors.dart';
 import 'widgets/blackbox_theme.dart';
 
 /// Wrap your [MaterialApp] (or [CupertinoApp]) with this widget.
@@ -72,6 +75,19 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
 
   final _floatingButtonKey = GlobalKey<_DraggableFloatingButtonState>();
 
+  // ── QA Annotation State ───────────────────────────────────────────
+  bool _isAnnotating = false;
+  final _strokes = <AnnotationStroke>[];
+  AnnotationTool _currentTool = AnnotationTool.freehand;
+  int _repaintVersion = 0;
+  bool _isCapturingScreenshot = false;
+  final _screenshotNotifier = ValueNotifier<List<int>?>(null);
+  int _screenshotGeneration = 0;
+
+  void _requestRepaint() {
+    if (mounted) setState(() => _repaintVersion++);
+  }
+
   // A stable global key for the internal navigator.
   // This prevents the navigator (and its internal Overlay/OverlayEntry items)
   // from being needlessly destroyed and recreated during parent rebuilds
@@ -117,9 +133,12 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
     ));
 
     BlackBox.instance.registerOverlayCallbacks(
+      owner: this,
       open: _open,
       close: _close,
       toggle: _toggle,
+      startAnnotation: _startAnnotation,
+      clearAnnotations: _clearAnnotations,
     );
 
     _setupTrigger();
@@ -173,22 +192,77 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
 
   void _toggle() => _isVisible ? _close() : _open();
 
+  void _startAnnotation() {
+    _close();
+    setState(() => _isAnnotating = true);
+  }
+
+  void _clearAnnotations() {
+    if (mounted) {
+      setState(() {
+        _strokes.clear();
+        _repaintVersion++;
+      });
+    }
+  }
+
+  void _addStroke(AnnotationStroke stroke) {
+    if (mounted) {
+      setState(() {
+        if (_strokes.length < 100) _strokes.add(stroke);
+        _repaintVersion++;
+      });
+    }
+  }
+
+  void _finishAnnotationAndCapture() {
+    setState(() {
+      _isAnnotating = false;
+      _isCapturingScreenshot = true;
+    });
+    // Wait one frame to ensure HUD is hidden
+    final generation = ++_screenshotGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || generation != _screenshotGeneration) return;
+      try {
+        final bytes = await _captureScreen();
+        if (mounted && generation == _screenshotGeneration) {
+          if (bytes != null) _screenshotNotifier.value = bytes;
+          _open();
+        }
+      } catch (_) {
+        if (mounted && generation == _screenshotGeneration) _open();
+      } finally {
+        if (mounted) {
+          setState(() => _isCapturingScreenshot = false);
+        }
+      }
+    });
+  }
+
   /// Captures a screenshot of the app content (before the overlay).
   Future<List<int>?> _captureScreen() async {
+    ui.Image? image;
     try {
       final boundary = _repaintKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
       if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: 2.0);
+      image = await boundary.toImage(pixelRatio: 2.0);
       final data = await image.toByteData(format: ImageByteFormat.png);
       return data?.buffer.asUint8List().toList();
     } catch (_) {
       return null;
+    } finally {
+      image?.dispose();
     }
   }
 
   @override
   void dispose() {
+    _screenshotGeneration++;
+    BlackBox.instance.unregisterOverlayCallbacks(this);
+    _screenshotNotifier.value = null;
+    _screenshotNotifier.dispose();
     _panelHeightFraction.dispose();
     if (_keyHandler != null) {
       HardwareKeyboard.instance.removeHandler(_keyHandler!);
@@ -214,16 +288,34 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
             // ── App content wrapped in RepaintBoundary for screenshots ──
             RepaintBoundary(
               key: _repaintKey,
-              child: widget.child,
+              child: Stack(
+                children: [
+                  widget.child,
+                  if (_isAnnotating || _isCapturingScreenshot)
+                    QaAnnotationLayer(
+                      strokes: _strokes,
+                      currentTool: _currentTool,
+                      isInteractive: _isAnnotating,
+                      repaintVersion: _repaintVersion,
+                      onStrokeComplete: _addStroke,
+                      onRepaintRequested: _requestRepaint,
+                    ),
+                ],
+              ),
             ),
 
             // ── Floating button trigger (draggable) ─────────────────────
-            if (trigger is FloatingButtonTrigger || _isHudPinned)
+            if (trigger is FloatingButtonTrigger ||
+                _isHudPinned ||
+                _isAnnotating)
               _DraggableFloatingButton(
                 key: _floatingButtonKey,
-                onTap: _toggle,
+                onTap: _isAnnotating ? () {} : _toggle,
                 accentColor: themeData.accentColor,
                 forceHudMode: _isHudPinned,
+                isAnnotationMode: _isAnnotating,
+                annotationControls:
+                    _buildAnnotationControls(themeData.accentColor),
                 onCloseHud: () => setState(() => _isHudPinned = false),
               ),
 
@@ -263,7 +355,7 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
                                       setState(() => _isHudPinned = true);
                                       _close();
                                     },
-                                    captureScreen: _captureScreen,
+                                    screenshotNotifier: _screenshotNotifier,
                                   ),
                                 ),
                               ),
@@ -281,6 +373,114 @@ class _BlackBoxOverlayState extends State<BlackBoxOverlay>
       ),
     );
   }
+
+  Widget _buildAnnotationControls(Color accentColor) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      child: SizedBox(
+        width: 336,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildToolBtn(AnnotationTool.freehand, Icons.edit),
+              _buildToolBtn(AnnotationTool.line, Icons.horizontal_rule),
+              _buildToolBtn(
+                  AnnotationTool.circle, Icons.radio_button_unchecked),
+              _buildToolBtn(AnnotationTool.rectangle, Icons.crop_square),
+              _buildToolBtn(AnnotationTool.move, Icons.open_with),
+              Container(
+                  width: 1,
+                  height: 24,
+                  color: Colors.white24,
+                  margin: const EdgeInsets.symmetric(horizontal: 4)),
+              _buildActionBtn(
+                icon: Icons.undo,
+                color: Colors.white,
+                onPressed: _strokes.isEmpty
+                    ? null
+                    : () {
+                        setState(() {
+                          _strokes.removeLast();
+                          _repaintVersion++;
+                        });
+                      },
+              ),
+              _buildActionBtn(
+                icon: Icons.check,
+                color: const Color(0xFF34D399),
+                onPressed: _finishAnnotationAndCapture,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionBtn(
+      {required IconData icon, required Color color, VoidCallback? onPressed}) {
+    final isEnabled = onPressed != null;
+    return GestureDetector(
+      onTap: onPressed,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.05),
+        ),
+        child: Icon(icon,
+            color: isEnabled ? color : color.withValues(alpha: 0.3), size: 20),
+      ),
+    );
+  }
+
+  Widget _buildToolBtn(AnnotationTool tool, IconData icon) {
+    final isActive = _currentTool == tool;
+    return GestureDetector(
+      onTap: () => setState(() => _currentTool = tool),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive
+              ? Colors.white.withValues(alpha: 0.25)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isActive
+                ? Colors.white.withValues(alpha: 0.5)
+                : Colors.transparent,
+            width: 1,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : null,
+        ),
+        child: Icon(
+          icon,
+          color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.6),
+          size: 20,
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,13 +492,13 @@ class _ResizablePanel extends StatelessWidget {
     required this.heightFraction,
     required this.onClose,
     required this.onPinToHud,
-    required this.captureScreen,
+    required this.screenshotNotifier,
   });
 
   final ValueNotifier<double> heightFraction;
   final VoidCallback onClose;
   final VoidCallback onPinToHud;
-  final Future<List<int>?> Function() captureScreen;
+  final ValueNotifier<List<int>?> screenshotNotifier;
 
   @override
   Widget build(BuildContext context) {
@@ -409,7 +609,7 @@ class _ResizablePanel extends StatelessWidget {
         child: _BlackBoxPanel(
           onClose: onClose,
           onPinToHud: onPinToHud,
-          captureScreen: captureScreen,
+          screenshotNotifier: screenshotNotifier,
         ),
       ),
     );
@@ -424,12 +624,12 @@ class _BlackBoxPanel extends StatefulWidget {
   const _BlackBoxPanel({
     required this.onClose,
     required this.onPinToHud,
-    required this.captureScreen,
+    required this.screenshotNotifier,
   });
 
   final VoidCallback onClose;
   final VoidCallback onPinToHud;
-  final Future<List<int>?> Function() captureScreen;
+  final ValueNotifier<List<int>?> screenshotNotifier;
 
   @override
   State<_BlackBoxPanel> createState() => _BlackBoxPanelState();
@@ -490,7 +690,7 @@ class _BlackBoxPanelState extends State<_BlackBoxPanel>
       (
         icon: Icons.bug_report_outlined,
         label: 'QA',
-        view: () => QaPanel(captureScreen: widget.captureScreen)
+        view: () => QaPanel(screenshotNotifier: widget.screenshotNotifier)
       ),
       (
         icon: Icons.qr_code_scanner,
@@ -610,6 +810,12 @@ class _PanelHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = BlackBoxTheme.of(context);
+    final headerButtonStyle = IconButton.styleFrom(
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      minimumSize: const Size(26, 26),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -656,9 +862,139 @@ class _PanelHeader extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    _BlackBoxBadge(theme: theme),
+                    Flexible(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(child: _BlackBoxBadge(theme: theme)),
+                          const SizedBox(width: 6),
+                          ValueListenableBuilder<bool>(
+                            valueListenable:
+                                BlackBox.instance.captureStateListenable,
+                            builder: (context, capturing, _) => Tooltip(
+                              message: capturing
+                                  ? 'Capture active'
+                                  : 'Capture paused',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: (capturing
+                                          ? BlackBoxColors.success
+                                          : BlackBoxColors.warning)
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  capturing ? 'REC' : 'PAUSED',
+                                  style: TextStyle(
+                                    fontSize: 7,
+                                    fontWeight: FontWeight.w800,
+                                    color: capturing
+                                        ? BlackBoxColors.success
+                                        : BlackBoxColors.warning,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const Spacer(),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: BlackBox.instance.captureStateListenable,
+                      builder: (context, capturing, _) => IconButton(
+                        tooltip: capturing ? 'Pause capture' : 'Resume capture',
+                        style: headerButtonStyle,
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          capturing ? Icons.pause : Icons.play_arrow,
+                          color: capturing
+                              ? theme.textSecondary
+                              : BlackBoxColors.warning,
+                          size: 18,
+                        ),
+                        onPressed: capturing
+                            ? BlackBox.pauseCapture
+                            : BlackBox.resumeCapture,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    PopupMenuButton<String>(
+                      tooltip: 'Capture actions',
+                      style: headerButtonStyle,
+                      color: theme.cardBackground,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: Icon(Icons.more_vert,
+                          color: theme.textSecondary, size: 18),
+                      onSelected: (value) async {
+                        if (value == 'clear') {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('Clear captured data?'),
+                              content: const Text(
+                                'This removes the current BlackBox session. '
+                                'Capture will keep its current paused or '
+                                'recording state.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dialogContext, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dialogContext, true),
+                                  child: const Text('Clear'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) BlackBox.clearCapturedData();
+                        } else if (value == 'link') {
+                          final linkTabIndex =
+                              tabs.indexWhere((tab) => tab.label == 'Link');
+                          if (linkTabIndex != -1) {
+                            tabController.animateTo(linkTabIndex);
+                          }
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem<String>(
+                          value: 'link',
+                          child: Row(
+                            children: [
+                              Icon(Icons.qr_code_scanner,
+                                  size: 18, color: Colors.white70),
+                              SizedBox(width: 8),
+                              Text('Open companion link'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'clear',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_sweep_outlined,
+                                  size: 18, color: Colors.white70),
+                              SizedBox(width: 8),
+                              Text('Clear captured data'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 6),
                     IconButton(
+                      tooltip: isSearching ? 'Close search' : 'Search',
+                      style: headerButtonStyle,
+                      visualDensity: VisualDensity.compact,
                       icon: Icon(
                         isSearching ? Icons.search_off : Icons.search,
                         color: isSearching
@@ -673,23 +1009,11 @@ class _PanelHeader extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 6),
                     IconButton(
-                      icon: const Icon(Icons.qr_code_scanner,
-                          color: Colors.white54, size: 18),
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-                        final linkTabIndex =
-                            tabs.indexWhere((t) => t.label == 'Link');
-                        if (linkTabIndex != -1) {
-                          tabController.animateTo(linkTabIndex);
-                        }
-                      },
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                    const SizedBox(width: 12),
-                    IconButton(
+                      tooltip: 'Pin to HUD',
+                      style: headerButtonStyle,
+                      visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.push_pin_outlined,
                           color: Colors.white54, size: 18),
                       onPressed: () {
@@ -700,8 +1024,11 @@ class _PanelHeader extends StatelessWidget {
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 6),
                     IconButton(
+                      tooltip: 'Close',
+                      style: headerButtonStyle,
+                      visualDensity: VisualDensity.compact,
                       icon: Icon(Icons.close,
                           color: theme.textSecondary, size: 18),
                       onPressed: () {
@@ -896,13 +1223,17 @@ class _BlackBoxBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: const Text(
-        'BlackBox',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: .6,
+      child: const FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          'BlackBox',
+          maxLines: 1,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .6,
+          ),
         ),
       ),
     );
@@ -915,12 +1246,16 @@ class _DraggableFloatingButton extends StatefulWidget {
     required this.onTap,
     required this.accentColor,
     this.forceHudMode = false,
+    this.isAnnotationMode = false,
+    this.annotationControls,
     this.onCloseHud,
   });
 
   final VoidCallback onTap;
   final Color accentColor;
   final bool forceHudMode;
+  final bool isAnnotationMode;
+  final Widget? annotationControls;
   final VoidCallback? onCloseHud;
 
   @override
@@ -928,23 +1263,45 @@ class _DraggableFloatingButton extends StatefulWidget {
       _DraggableFloatingButtonState();
 }
 
-class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
-    with SingleTickerProviderStateMixin {
+class _HudStats {
+  const _HudStats({
+    this.fps = 0,
+    this.pingMs = 0,
+    this.crashCount = 0,
+    this.errorBadge = 0,
+  });
+
+  final double fps;
+  final int pingMs;
+  final int crashCount;
+  final int errorBadge;
+
+  _HudStats copyWith({
+    double? fps,
+    int? pingMs,
+    int? crashCount,
+    int? errorBadge,
+  }) {
+    return _HudStats(
+      fps: fps ?? this.fps,
+      pingMs: pingMs ?? this.pingMs,
+      crashCount: crashCount ?? this.crashCount,
+      errorBadge: errorBadge ?? this.errorBadge,
+    );
+  }
+}
+
+class _DraggableFloatingButtonState extends State<_DraggableFloatingButton> {
   // Position stored as offsets from bottom-right corner.
-  double _right = 16;
-  double _bottom = 80;
+  final ValueNotifier<Offset> _positionNotifier =
+      ValueNotifier<Offset>(const Offset(16, 80));
   bool _isDragging = false;
   bool _isHudMode = false;
 
-  late final AnimationController _ctrl;
-  late final Animation<double> _scaleAnim;
-
-  // Live HUD data
+  // Live HUD data isolated in a ValueNotifier
   String? _lastSeenRequestId;
-  int _lastPingMs = 0;
-  int _crashCount = 0;
-  double _fps = 0;
-  int _errorBadge = 0;
+  final ValueNotifier<_HudStats> _hudStatsNotifier =
+      ValueNotifier<_HudStats>(const _HudStats());
 
   StreamSubscription<List<NetworkEntry>>? _networkSub;
   StreamSubscription<List<CrashEntry>>? _crashSub;
@@ -954,56 +1311,72 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
   void initState() {
     super.initState();
     _isHudMode = widget.forceHudMode;
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500));
-
-    if (!WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
-      _ctrl.repeat(reverse: true);
-    }
-
-    _scaleAnim = Tween<double>(begin: 1.0, end: 1.1)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-
-    // Subscribe to live data for HUD.
-    // The stream is throttled (250ms) and may deliver stale snapshots where
-    // the newest entries are still pending. We use the event only as a
-    // trigger and read the freshest data directly from the store.
-    _networkSub = BlackBox.instance.networkStore.stream.listen((_) {
-      _refreshNetworkHud();
-    });
-    // Also pick up any data already in the store.
-    _refreshNetworkHud();
-
-    _crashSub = BlackBox.instance.crashStore.stream.listen((crashes) {
-      if (mounted) setState(() => _crashCount = crashes.length);
-    });
-
-    _fpsSub = BlackBox.instance.fpsMonitor.stream.listen((snapshot) {
-      if (mounted) setState(() => _fps = snapshot.fps);
-    });
+    if (_isHudMode) _subscribeHud();
   }
 
   @override
   void dispose() {
-    _networkSub?.cancel();
-    _crashSub?.cancel();
-    _fpsSub?.cancel();
-    _ctrl.dispose();
+    _unsubscribeHud();
+    _hudStatsNotifier.dispose();
+    _positionNotifier.dispose();
     super.dispose();
   }
 
   void clearBadge() {
-    if (_errorBadge > 0 && mounted) {
-      setState(() => _errorBadge = 0);
+    if (_hudStatsNotifier.value.errorBadge > 0) {
+      _hudStatsNotifier.value = _hudStatsNotifier.value.copyWith(errorBadge: 0);
     }
   }
 
   @override
   void didUpdateWidget(covariant _DraggableFloatingButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.forceHudMode != oldWidget.forceHudMode && widget.forceHudMode) {
-      setState(() => _isHudMode = true);
+    if (widget.forceHudMode != oldWidget.forceHudMode) {
+      _isHudMode = widget.forceHudMode;
+      if (_isHudMode) {
+        _subscribeHud();
+      } else {
+        _unsubscribeHud();
+      }
     }
+  }
+
+  void _subscribeHud() {
+    if (_networkSub != null) return;
+
+    // The streams are wake-up signals; read the current store snapshot so a
+    // throttled emission cannot make the HUD lag behind the latest entry.
+    _networkSub = BlackBox.instance.networkStore.stream.listen((_) {
+      _refreshNetworkHud();
+    });
+    _crashSub = BlackBox.instance.crashStore.stream.listen((crashes) {
+      if (mounted) {
+        _hudStatsNotifier.value =
+            _hudStatsNotifier.value.copyWith(crashCount: crashes.length);
+      }
+    });
+    _fpsSub = BlackBox.instance.fpsMonitor.stream.listen((snapshot) {
+      if (mounted) {
+        _hudStatsNotifier.value =
+            _hudStatsNotifier.value.copyWith(fps: snapshot.fps);
+      }
+    });
+
+    _hudStatsNotifier.value = _hudStatsNotifier.value
+        .copyWith(crashCount: BlackBox.instance.crashStore.entries.length);
+    _refreshNetworkHud();
+  }
+
+  void _unsubscribeHud() {
+    final networkSub = _networkSub;
+    final crashSub = _crashSub;
+    final fpsSub = _fpsSub;
+    _networkSub = null;
+    _crashSub = null;
+    _fpsSub = null;
+    if (networkSub != null) unawaited(networkSub.cancel());
+    if (crashSub != null) unawaited(crashSub.cancel());
+    if (fpsSub != null) unawaited(fpsSub.cancel());
   }
 
   /// Reads the freshest data directly from the store (bypassing the throttled
@@ -1011,7 +1384,16 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
   void _refreshNetworkHud() {
     if (!mounted) return;
     final entries = BlackBox.instance.networkStore.entries;
-    if (entries.isEmpty) return;
+    if (entries.isEmpty) {
+      if (_lastSeenRequestId != null ||
+          _hudStatsNotifier.value.pingMs != 0 ||
+          _hudStatsNotifier.value.errorBadge != 0) {
+        _lastSeenRequestId = null;
+        _hudStatsNotifier.value =
+            _hudStatsNotifier.value.copyWith(pingMs: 0, errorBadge: 0);
+      }
+      return;
+    }
 
     // Walk backwards to find the most recent entry with a completed response.
     for (int i = entries.length - 1; i >= 0; i--) {
@@ -1019,24 +1401,25 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
       if (entry.response != null) {
         // Only update if it's a different request than what we already show.
         if (entry.request.id != _lastSeenRequestId) {
-          setState(() {
-            _lastSeenRequestId = entry.request.id;
-            _lastPingMs = entry.durationMs;
-            if (entry.response!.isClientError ||
-                entry.response!.isServerError) {
-              _errorBadge++;
-            }
-          });
+          _lastSeenRequestId = entry.request.id;
+          final isError =
+              entry.response!.isClientError || entry.response!.isServerError;
+          _hudStatsNotifier.value = _hudStatsNotifier.value.copyWith(
+            pingMs: entry.durationMs,
+            errorBadge: isError
+                ? _hudStatsNotifier.value.errorBadge + 1
+                : _hudStatsNotifier.value.errorBadge,
+          );
         }
         return;
       }
     }
   }
 
-  Color _pingColor() {
-    if (_lastPingMs == 0) return Colors.white38;
-    if (_lastPingMs < 200) return const Color(0xFF4ADE80);
-    if (_lastPingMs < 500) return const Color(0xFFFBBF24);
+  Color _pingColor(int pingMs) {
+    if (pingMs == 0) return Colors.white38;
+    if (pingMs < 200) return const Color(0xFF4ADE80);
+    if (pingMs < 500) return const Color(0xFFFBBF24);
     return const Color(0xFFEF4444);
   }
 
@@ -1047,34 +1430,59 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
     const hudHeight = 36.0;
     const hudWidth = 200.0;
 
-    final currentWidth = _isHudMode ? hudWidth : buttonSize;
-    final currentHeight = _isHudMode ? hudHeight : buttonSize;
+    final isAnnotation = widget.isAnnotationMode;
+    final currentWidth =
+        isAnnotation ? 336.0 : (_isHudMode ? hudWidth : buttonSize);
+    final currentHeight =
+        isAnnotation ? 44.0 : (_isHudMode ? hudHeight : buttonSize);
 
-    return AnimatedPositioned(
-      duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-      right: _right.clamp(4.0, screenSize.width - currentWidth - 4),
-      bottom: _bottom.clamp(4.0, screenSize.height - currentHeight - 4),
+    final maxRight = (screenSize.width - currentWidth - 4.0) > 4.0
+        ? (screenSize.width - currentWidth - 4.0)
+        : 4.0;
+    final maxBottom = (screenSize.height - currentHeight - 4.0) > 4.0
+        ? (screenSize.height - currentHeight - 4.0)
+        : 4.0;
+
+    return ValueListenableBuilder<Offset>(
+      valueListenable: _positionNotifier,
+      builder: (context, pos, child) {
+        return AnimatedPositioned(
+          duration:
+              _isDragging ? Duration.zero : const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          right: pos.dx.clamp(4.0, maxRight),
+          bottom: pos.dy.clamp(4.0, maxBottom),
+          child: child!,
+        );
+      },
       child: GestureDetector(
-        onPanStart: (_) => _isDragging = false,
+        onPanStart: (_) {
+          if (!_isDragging) {
+            setState(() => _isDragging = true);
+          }
+        },
         onPanUpdate: (details) {
-          _isDragging = true;
-          setState(() {
-            _right -= details.delta.dx;
-            _bottom -= details.delta.dy;
-          });
+          _positionNotifier.value = Offset(
+            _positionNotifier.value.dx - details.delta.dx,
+            _positionNotifier.value.dy - details.delta.dy,
+          );
         },
         onPanEnd: (_) {
-          setState(() {
-            // Snap to nearest horizontal edge
-            final center = screenSize.width - _right - currentWidth / 2;
-            _right = center < screenSize.width / 2
-                ? screenSize.width - currentWidth - 4
-                : 4;
-          });
-          _isDragging = false;
+          final maxRight = (screenSize.width - currentWidth - 4.0) > 4.0
+              ? (screenSize.width - currentWidth - 4.0)
+              : 4.0;
+          final center =
+              screenSize.width - _positionNotifier.value.dx - currentWidth / 2;
+          final snapRight = center < screenSize.width / 2 ? maxRight : 4.0;
+          setState(() => _isDragging = false);
+          _positionNotifier.value =
+              Offset(snapRight, _positionNotifier.value.dy);
         },
-        onPanCancel: () => _isDragging = false,
+        onPanCancel: () {
+          if (_isDragging) {
+            setState(() => _isDragging = false);
+          }
+        },
         onTap: () {
           if (!_isDragging) widget.onTap();
           _isDragging = false;
@@ -1083,8 +1491,8 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
-            width: _isHudMode ? hudWidth : buttonSize,
-            height: _isHudMode ? hudHeight : buttonSize,
+            width: currentWidth,
+            height: currentHeight,
             decoration: BoxDecoration(
               gradient: _isHudMode
                   ? LinearGradient(
@@ -1104,14 +1512,12 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
                             widget.accentColor, const Color(0xFF38BDF8), 0.4)!,
                       ],
                     ),
-              borderRadius: BorderRadius.circular(
-                _isHudMode ? hudHeight / 2 : buttonSize / 2,
-              ),
+              borderRadius: BorderRadius.circular(currentHeight / 2),
               boxShadow: [
                 BoxShadow(
                   color: widget.accentColor.withValues(alpha: 0.45),
-                  blurRadius: _isHudMode ? 16 : 14,
-                  spreadRadius: _isHudMode ? 0 : 1,
+                  blurRadius: (_isHudMode || isAnnotation) ? 16 : 14,
+                  spreadRadius: (_isHudMode || isAnnotation) ? 0 : 1,
                   offset: const Offset(0, 4),
                 ),
                 BoxShadow(
@@ -1121,7 +1527,9 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
                 ),
               ],
             ),
-            child: _isHudMode ? _buildHudContent() : _buildButtonContent(),
+            child: isAnnotation
+                ? (widget.annotationControls ?? const SizedBox.shrink())
+                : (_isHudMode ? _buildHudContent() : _buildButtonContent()),
           ),
         ),
       ),
@@ -1134,11 +1542,8 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
       alignment: Alignment.center,
       clipBehavior: Clip.none,
       children: [
-        ScaleTransition(
-          scale: _scaleAnim,
-          child: const Center(
-            child: Icon(Icons.bug_report, color: Colors.white, size: 20),
-          ),
+        const Center(
+          child: Icon(Icons.bug_report, color: Colors.white, size: 20),
         ),
         if (isDesktop)
           Positioned(
@@ -1160,35 +1565,40 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
               ),
             ),
           ),
-        if (_errorBadge > 0)
-          Positioned(
-            top: 2,
-            right: 2,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.5),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Text(
-                _errorBadge > 9 ? '9+' : '$_errorBadge',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
+        ValueListenableBuilder<_HudStats>(
+          valueListenable: _hudStatsNotifier,
+          builder: (context, stats, _) {
+            if (stats.errorBadge <= 0) return const SizedBox.shrink();
+            return Positioned(
+              top: 2,
+              right: 2,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.center,
+                child: Text(
+                  stats.errorBadge > 9 ? '9+' : '${stats.errorBadge}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-          ),
+            );
+          },
+        ),
       ],
     );
   }
@@ -1201,88 +1611,102 @@ class _DraggableFloatingButtonState extends State<_DraggableFloatingButton>
   }
 
   Widget _buildHudContent() {
-    final fpsColor = _fps >= 55
-        ? const Color(0xFF4ADE80)
-        : _fps >= 30
-            ? const Color(0xFFFBBF24)
-            : const Color(0xFFEF4444);
+    return ValueListenableBuilder<_HudStats>(
+      valueListenable: _hudStatsNotifier,
+      builder: (context, stats, _) {
+        final fps = stats.fps;
+        final fpsColor = fps >= 55
+            ? const Color(0xFF4ADE80)
+            : fps >= 30
+                ? const Color(0xFFFBBF24)
+                : const Color(0xFFEF4444);
 
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(width: 8),
-          // FPS
-          Icon(Icons.speed, color: fpsColor, size: 13),
-          const SizedBox(width: 3),
-          Text(
-            '${_fps.round()}',
-            style: TextStyle(
-              color: fpsColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 16,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            color: Colors.white24,
-          ),
-          // Network latency (ping)
-          Icon(Icons.wifi, color: _pingColor(), size: 13),
-          const SizedBox(width: 3),
-          Text(
-            _lastPingMs > 0 ? '${_lastPingMs}ms' : '---',
-            style: TextStyle(
-              color: _pingColor(),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 16,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            color: Colors.white24,
-          ),
-          // Crash count
-          Icon(
-            Icons.warning_amber_rounded,
-            color: _crashCount > 0 ? const Color(0xFFEF4444) : Colors.white38,
-            size: 13,
-          ),
-          const SizedBox(width: 3),
-          Text(
-            '$_crashCount',
-            style: TextStyle(
-              color: _crashCount > 0 ? const Color(0xFFEF4444) : Colors.white38,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Unpin button
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isHudMode = false;
-                widget.onCloseHud?.call();
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+        final pingMs = stats.pingMs;
+        final pingColor = _pingColor(pingMs);
+        final crashCount = stats.crashCount;
+
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(width: 8),
+              // FPS
+              Icon(Icons.speed, color: fpsColor, size: 13),
+              const SizedBox(width: 3),
+              Text(
+                '${fps.round()}',
+                style: TextStyle(
+                  color: fpsColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              child: const Icon(Icons.close, color: Colors.white54, size: 12),
-            ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: Colors.white24,
+              ),
+              // Network latency (ping)
+              Icon(Icons.wifi, color: pingColor, size: 13),
+              const SizedBox(width: 3),
+              Text(
+                pingMs > 0 ? '${pingMs}ms' : '---',
+                style: TextStyle(
+                  color: pingColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: Colors.white24,
+              ),
+              // Crash count
+              Icon(
+                Icons.warning_amber_rounded,
+                color:
+                    crashCount > 0 ? const Color(0xFFEF4444) : Colors.white38,
+                size: 13,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                '$crashCount',
+                style: TextStyle(
+                  color:
+                      crashCount > 0 ? const Color(0xFFEF4444) : Colors.white38,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Unpin button
+              GestureDetector(
+                onTap: () {
+                  _unsubscribeHud();
+                  setState(() {
+                    _isHudMode = false;
+                    widget.onCloseHud?.call();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      const Icon(Icons.close, color: Colors.white54, size: 12),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
           ),
-          const SizedBox(width: 6),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1320,11 +1744,13 @@ class _LazyIndexedStackState extends State<_LazyIndexedStack> {
         newBuilt[i] = _built[i];
       }
       _built = newBuilt;
+      _warmedUp.removeWhere((i) => i >= widget.children.length);
     }
     _buildAndWarmUp(widget.index);
   }
 
   void _buildAndWarmUp(int index) {
+    if (index < 0 || index >= widget.children.length) return;
     if (_built[index] == null) {
       // Build the panel but keep it invisible for one frame so Flutter
       // can measure and lay it out before it becomes visible.

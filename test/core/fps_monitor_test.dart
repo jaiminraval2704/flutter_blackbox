@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_blackbox/src/core/performance/fps_monitor.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('FpsSnapshot', () {
     test('isJanky when avgFrameMs > 16.67', () {
       const snap = FpsSnapshot(
@@ -34,8 +36,19 @@ void main() {
       expect(snap.jankyFrameCount, 3);
     });
 
-    test('budgetMs is 16.67', () {
-      expect(FpsSnapshot.budgetMs, closeTo(16.67, 0.01));
+    test('default budgetMs is 16.67', () {
+      const snap =
+          FpsSnapshot(fps: 0, avgFrameMs: 0, worstFrameMs: 0, samples: []);
+      expect(snap.budgetMs, closeTo(16.67, 0.01));
+    });
+
+    test('new timing fields default to zero for source compatibility', () {
+      const snap =
+          FpsSnapshot(fps: 60, avgFrameMs: 16, worstFrameMs: 16, samples: []);
+
+      expect(snap.buildAvgMs, 0);
+      expect(snap.rasterAvgMs, 0);
+      expect(snap.totalAvgMs, 0);
     });
   });
 
@@ -51,6 +64,19 @@ void main() {
       final monitor = FpsMonitor();
       monitor.stop();
       expect(monitor.current.samples, isEmpty);
+      monitor.dispose();
+    });
+
+    test('pause and resume preserve the session', () {
+      final monitor = FpsMonitor();
+      monitor.start();
+      final startedAt = monitor.sessionStart;
+
+      monitor.pause();
+      monitor.resume();
+
+      expect(startedAt, isNotNull);
+      expect(monitor.sessionStart, startedAt);
       monitor.dispose();
     });
 

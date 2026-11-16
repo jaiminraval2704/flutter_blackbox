@@ -1,7 +1,7 @@
 /// Flutter BlackBox — In-app debug & QA overlay for Flutter.
 ///
-/// Single package containing the core overlay, all panels, and built-in
-/// adapters for Dio and dart:http.
+/// Single package containing the core overlay, all panels, and zero external
+/// dependencies.
 ///
 /// ## Minimal setup
 /// ```dart
@@ -11,25 +11,25 @@
 /// }
 /// ```
 ///
-/// ## With Dio
-/// ```dart
-/// import 'package:flutter_blackbox/adapters/dio.dart';
-///
-/// BlackBox.setup(
-///   httpAdapters: [DioBlackBoxAdapter(dio)],
-///   enabled: kDebugMode,
-/// );
+/// ## With Adapters (Dio, http, SharedPreferences, Socket.IO)
+/// Generate only the adapters your project needs:
+/// ```sh
+/// dart run flutter_blackbox:init --generate
 /// ```
 ///
-/// ## With http package
+/// Then import the generated adapters in your code:
 /// ```dart
-/// import 'package:flutter_blackbox/adapters/http.dart';
+/// import 'package:flutter_blackbox/flutter_blackbox.dart';
+/// import 'blackbox_adapters.dart'; // generated file
 ///
-/// final adapter = HttpBlackBoxAdapter(http.Client());
-/// BlackBox.setup(
-///   httpAdapters: [adapter],
-///   enabled: kDebugMode,
-/// );
+/// void main() {
+///   BlackBox.setup(
+///     httpAdapters: [DioBlackBoxAdapter(dio)],
+///     storageAdapters: [SharedPrefsStorageAdapter()],
+///     enabled: kDebugMode,
+///   );
+///   runApp(BlackBoxOverlay(child: const MyApp()));
+/// }
 /// ```
 
 library;

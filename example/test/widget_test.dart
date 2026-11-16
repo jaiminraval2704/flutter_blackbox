@@ -1,30 +1,29 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:flutter_blackbox/flutter_blackbox.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:blackbox_example/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('example renders and sends actions to BlackBox', (tester) async {
+    BlackBox.setup(enabled: true);
+    try {
+      await tester.pumpWidget(const MyApp());
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(find.text('BlackBox Example'), findsOneWidget);
+      expect(find.text('Log info message'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+      await tester.tap(find.text('Log info message'));
+      await tester.pump();
+
+      expect(
+        BlackBox.instance.logStore.entries
+            .any((entry) => entry.message == 'User opened home screen'),
+        isTrue,
+      );
+    } finally {
+      BlackBox.dispose();
+    }
   });
 }

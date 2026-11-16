@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0] - 2026-09-02
+
+### Added
+- Added pause, resume, and clear-session capture controls to the existing overlay header; no new tab is introduced.
+- Added capture footprint diagnostics for retained entries, bounded payloads, dropped entries, and process RSS change.
+- Added an optional `routeNameResolver` to `BlackBox.setup` for applications that use unnamed imperative routes.
+- Added direct external browser launching for Support and Companion links via `url_launcher` with automatic clipboard copy fallback.
+- Added Support Creator page with direct UPI payment QR/intents and portfolio links in both mobile overlay and Web Companion.
+- Added full Android 16 KB page size compatibility across platform dependencies (`package_info_plus`, `device_info_plus`, `connectivity_plus`, `url_launcher`) and uncompressed jniLibs packaging.
+
+### Changed
+- Reworked setup and disposal so singleton store streams remain usable across repeated lifecycle calls while adapters, subscriptions, Firebase work, frame callbacks, and overlay resources are safely released.
+- Bounded and detached retained network, log, socket, navigation, crash, and companion payloads before storage or transmission.
+- Replaced permanent FPS callbacks with removable frame-timing callbacks and added UI-thread, raster-thread, and total-frame timing data.
+- Removed idle floating-button animation work, limited Mini HUD subscriptions to visible HUD mode, fixed global-search debouncing, and restored Flutter's default list cache extent.
+- Simplified unnamed route detection so diagnostics never invoke application route builders or inspect the element tree. Unnamed `MaterialPageRoute` instances now fall back to their runtime type; use `routeNameResolver` when a semantic name is required.
+
+### Fixed
+- Preserved every completed network response during bursts instead of deriving completion events from throttled UI snapshots.
+- Allowed responses for requests captured immediately before pause to finish their stored entry while rejecting requests started during pause.
+- Prevented stale overlay callbacks, screenshot image handles, periodic Firebase requests, and failed partial setup from retaining runtime resources.
+- Fixed QA panel scrolling when soft keyboard is visible and auto-cleared bug title and tester notes upon successful report generation.
+
 ## [0.7.0] - 2026-06-17
 
 ### Added

@@ -1,11 +1,12 @@
 name: flutter_blackbox
 description: All-in-one Flutter debug overlay and live remote web dashboard. Inspect network, logs, crashes, and performance natively on-device or remotely via a browser.
-version: 0.7.0
+version: 0.8.0
 homepage: https://github.com/jaiminraval2704/flutter_blackbox
 repository: https://github.com/jaiminraval2704/flutter_blackbox
 issue_tracker: https://github.com/jaiminraval2704/flutter_blackbox/issues
 funding:
-  - https://github.com/sponsors/jaiminraval2704
+  - https://flutter-blackbox-companion.web.app/support
+  - https://jaimin-raval-portfolio.web.app/
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -17,9 +18,10 @@ dependencies:
     sdk: flutter
   yaml: ">=3.1.0 <4.0.0"
   http: ">=1.0.0 <2.0.0"
-  package_info_plus: ">=8.0.0 <11.0.0"
-  device_info_plus: ">=9.0.0 <14.0.0"
-  connectivity_plus: ">=6.0.0 <8.0.0"
+  package_info_plus: ">=8.2.0 <12.0.0"
+  device_info_plus: ">=11.2.0 <15.0.0"
+  connectivity_plus: ">=6.1.5 <9.0.0"
+  url_launcher: ">=6.3.0 <8.0.0"
 
 dev_dependencies:
   # ── Optional adapter packages — used only for testing CLI templates ───
@@ -28,7 +30,7 @@ dev_dependencies:
   socket_io_client: ">=3.0.0 <4.0.0"
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ">=5.0.0 <7.0.0"
 
 topics:
   - debug

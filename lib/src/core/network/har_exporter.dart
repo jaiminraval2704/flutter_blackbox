@@ -26,7 +26,7 @@ class HarExporter {
         'version': '1.2',
         'creator': {
           'name': 'Flutter BlackBox',
-          'version': '0.6.0',
+          'version': '0.8.0',
         },
         'entries': harEntries,
       },
@@ -36,9 +36,21 @@ class HarExporter {
     return encoder.convert(har);
   }
 
+  static String _safeJsonEncode(dynamic body) {
+    if (body == null) return '';
+    if (body is String) return body;
+    try {
+      return jsonEncode(body);
+    } catch (_) {
+      return body.toString();
+    }
+  }
+
   static Map<String, dynamic> _buildEntry(NetworkEntry entry) {
     final req = entry.request;
     final res = entry.response!;
+    final reqBodyStr = req.body != null ? _safeJsonEncode(req.body) : null;
+    final resBodyStr = res.body != null ? _safeJsonEncode(res.body) : '';
 
     return {
       'startedDateTime': req.timestamp.toIso8601String(),
@@ -53,20 +65,16 @@ class HarExporter {
         'queryString': req.queryParameters.entries
             .map((e) => {'name': e.key, 'value': e.value})
             .toList(),
-        'postData': req.body != null
+        'postData': reqBodyStr != null
             ? {
                 'mimeType': req.headers['content-type'] ??
                     req.headers['Content-Type'] ??
                     'application/json',
-                'text': req.body is String ? req.body : jsonEncode(req.body),
+                'text': reqBodyStr,
               }
             : null,
         'headersSize': -1,
-        'bodySize': req.body != null
-            ? (req.body is String
-                ? (req.body as String).length
-                : jsonEncode(req.body).length)
-            : 0,
+        'bodySize': reqBodyStr?.length ?? 0,
       },
       'response': {
         'status': res.statusCode,
@@ -78,7 +86,7 @@ class HarExporter {
         'content': {
           'size': res.responseSizeBytes ?? 0,
           'mimeType': res.headers['content-type'] ?? 'application/json',
-          'text': res.body is String ? res.body : jsonEncode(res.body ?? ''),
+          'text': resBodyStr,
         },
         'headersSize': -1,
         'bodySize': res.responseSizeBytes ?? 0,

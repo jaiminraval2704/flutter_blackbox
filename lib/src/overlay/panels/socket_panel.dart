@@ -57,11 +57,55 @@ class _SocketPanelState extends State<SocketPanel> {
                     icon: Icons.power, label: 'No socket events yet');
               }
 
-              return ListView.builder(
-                reverse: false,
-                itemCount: events.length,
-                itemBuilder: (ctx, i) =>
-                    _SocketTile(event: events[events.length - 1 - i]),
+              return Column(
+                children: [
+                  // ponytail: computed inline from existing list, no caching needed
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                            child: _SocketStat(
+                                label: 'Total', value: '${events.length}')),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _SocketStat(
+                            label: 'Unique',
+                            value:
+                                '${events.map((e) => e.eventName).toSet().length}',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _SocketStat(
+                            label: '↑ Out',
+                            value:
+                                '${events.where((e) => e.direction == SocketDirection.outgoing).length}',
+                            color: const Color(0xFF38BDF8),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _SocketStat(
+                            label: '↓ In',
+                            value:
+                                '${events.where((e) => e.direction == SocketDirection.incoming).length}',
+                            color: const Color(0xFF34D399),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      reverse: false,
+                      itemCount: events.length,
+                      itemBuilder: (ctx, i) =>
+                          _SocketTile(event: events[events.length - 1 - i]),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -311,6 +355,51 @@ class _DirectionBadge extends StatelessWidget {
         ],
       ),
       child: Icon(_icon, size: 12, color: _color),
+    );
+  }
+}
+
+class _SocketStat extends StatelessWidget {
+  const _SocketStat({
+    required this.label,
+    required this.value,
+    this.color = Colors.white70,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 9, color: Colors.white38),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+                fontFamily: 'monospace'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }

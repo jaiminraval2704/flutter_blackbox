@@ -21,3 +21,6 @@ build/
 pana_output.txt
 pana_output2.txt
 pana_final_report.json
+
+# Repository-only screenshots and preview media referenced by the README.
+assets/

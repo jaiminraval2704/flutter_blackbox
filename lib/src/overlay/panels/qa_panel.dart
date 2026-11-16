@@ -10,8 +10,8 @@ import '../../core/report/package_info_impl.dart'
     if (dart.library.js_interop) '../../core/report/package_info_stub.dart';
 
 class QaPanel extends StatefulWidget {
-  const QaPanel({super.key, required this.captureScreen});
-  final Future<List<int>?> Function() captureScreen;
+  const QaPanel({super.key, required this.screenshotNotifier});
+  final ValueNotifier<List<int>?> screenshotNotifier;
 
   @override
   State<QaPanel> createState() => _QaPanelState();
@@ -20,9 +20,13 @@ class QaPanel extends StatefulWidget {
 class _QaPanelState extends State<QaPanel> {
   final _notesController = TextEditingController();
   final _titleController = TextEditingController();
+  final _scrollController = ScrollController();
   BugSeverity _selectedSeverity = BugSeverity.medium;
 
   bool _isGenerating = false;
+  bool _isUploading = false;
+  BlackBoxReport? _lastReport;
+  String? _lastReportId;
   String? _lastReportText;
   String? _lastMarkdownText;
   List<int>? _lastScreenshot;
@@ -43,6 +47,7 @@ class _QaPanelState extends State<QaPanel> {
   void dispose() {
     _notesController.dispose();
     _titleController.dispose();
+    _scrollController.dispose();
     _lastScreenshot = null;
     super.dispose();
   }
@@ -54,8 +59,7 @@ class _QaPanelState extends State<QaPanel> {
 
     setState(() => _isGenerating = true);
     try {
-      final screenshot = await widget.captureScreen();
-      if (!mounted) return;
+      final screenshot = widget.screenshotNotifier.value;
 
       final report = await BlackBox.buildReport(
         bugTitle: title.isNotEmpty ? title : null,
@@ -64,17 +68,92 @@ class _QaPanelState extends State<QaPanel> {
         screenshotPngBytes: screenshot,
       );
 
+      // Upload report to web companion if streaming is active
+      String? uploadedId;
+      try {
+        uploadedId = await BlackBox.uploadReport(report);
+      } catch (_) {}
+
       if (!mounted) return;
 
       setState(() {
+        _lastReport = report;
+        _lastReportId = uploadedId;
         _lastReportText = report.toString();
         _lastMarkdownText = report.toMarkdown();
         _lastScreenshot = screenshot;
         _isGenerating = false;
+        _titleController.clear();
+        _notesController.clear();
       });
+      BlackBox.clearAnnotations();
+      widget.screenshotNotifier.value =
+          null; // Clear the pending screenshot on success
+
+      if (mounted) {
+        if (uploadedId != null) {
+          BlackBoxToast.show(
+              context, 'Report #$uploadedId generated & synced to companion');
+        } else {
+          BlackBoxToast.show(context, 'QA Report generated');
+        }
+      }
     } catch (e) {
-      if (mounted) setState(() => _isGenerating = false);
+      if (mounted) {
+        setState(() => _isGenerating = false);
+        BlackBoxToast.show(context, 'Failed to generate report');
+      }
     }
+  }
+
+  Future<void> _uploadToCompanion() async {
+    if (_lastReport == null || _isUploading) return;
+    setState(() => _isUploading = true);
+    try {
+      final id = await BlackBox.uploadReport(_lastReport!);
+      if (!mounted) return;
+      setState(() {
+        _lastReportId = id;
+        _isUploading = false;
+      });
+      if (id != null && mounted) {
+        BlackBoxToast.show(context, 'Report #$id synced to web companion');
+      } else if (mounted) {
+        BlackBoxToast.show(context, 'Failed to upload report to companion');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploading = false);
+        BlackBoxToast.show(context, 'Failed to upload report');
+      }
+    }
+  }
+
+  void _showFullscreenPreview(List<int> imageBytes) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Image.memory(
+              Uint8List.fromList(imageBytes),
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _copyReport() {
@@ -96,8 +175,12 @@ class _QaPanelState extends State<QaPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + bottomInset),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -279,7 +362,64 @@ class _QaPanelState extends State<QaPanel> {
             ),
           ),
           const SizedBox(height: 16),
-          // ── Generate button ──────────────────────────────────────────
+          ValueListenableBuilder<List<int>?>(
+            valueListenable: widget.screenshotNotifier,
+            builder: (context, screenshotBytes, child) {
+              if (screenshotBytes == null) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _Label('Pending Screenshot'),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => _showFullscreenPreview(screenshotBytes),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            Uint8List.fromList(screenshotBytes),
+                            height: 120,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.zoom_in,
+                              color: Colors.white, size: 24),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
+          ),
+          // ── Annotate & Generate buttons ──────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: BlackBox.startAnnotation,
+              icon: const Icon(Icons.edit, size: 16),
+              label: const Text('Annotate Screen'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white38),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -312,6 +452,62 @@ class _QaPanelState extends State<QaPanel> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white38),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
+          if (_lastReportId != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF34D399).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.3),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cloud_done_rounded,
+                      color: Color(0xFF34D399), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SelectableText(
+                      'Synced to Web Companion (ID: $_lastReportId)',
+                      style: const TextStyle(
+                        color: Color(0xFF34D399),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_lastReport != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUploading ? null : _uploadToCompanion,
+                icon: _isUploading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.cloud_upload_outlined, size: 16),
+                label: Text(_isUploading
+                    ? 'Syncing to Companion…'
+                    : 'Sync to Web Companion'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF38BDF8),
+                  side: const BorderSide(color: Color(0xFF38BDF8)),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8)),
@@ -376,11 +572,10 @@ class _QaPanelState extends State<QaPanel> {
 class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final logCount = BlackBox.instance.logStore.entries.length;
+    final logs = BlackBox.instance.logStore.entries;
+    final logCount = logs.length;
     final networkCount = BlackBox.instance.networkStore.entries.length;
-    final errorCount = BlackBox.instance.logStore.entries
-        .where((e) => e.level == LogLevel.error)
-        .length;
+    final errorCount = logs.where((e) => e.level == LogLevel.error).length;
 
     return Row(
       children: [

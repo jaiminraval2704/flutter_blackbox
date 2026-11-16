@@ -69,18 +69,19 @@ class _NetworkPanelState extends State<NetworkPanel> {
   void dispose() {
     _sub?.cancel();
     _searchCtrl.dispose();
+    _showScrollToTop.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
   final ScrollController _scrollController = ScrollController();
-  bool _showScrollToTop = false;
+  final ValueNotifier<bool> _showScrollToTop = ValueNotifier<bool>(false);
 
   void _onScroll() {
     final show = _scrollController.offset > 300;
-    if (show != _showScrollToTop) {
-      setState(() => _showScrollToTop = show);
+    if (show != _showScrollToTop.value) {
+      _showScrollToTop.value = show;
     }
   }
 
@@ -202,7 +203,12 @@ class _NetworkPanelState extends State<NetworkPanel> {
     String baseUrl = '';
     try {
       if (_entries.isNotEmpty) {
-        baseUrl = Uri.parse(_entries.last.request.url).origin;
+        final uri = Uri.tryParse(_entries.last.request.url);
+        if (uri != null &&
+            uri.hasScheme &&
+            (uri.scheme == 'http' || uri.scheme == 'https')) {
+          baseUrl = uri.origin;
+        }
       }
     } catch (_) {}
 
@@ -435,8 +441,6 @@ class _NetworkPanelState extends State<NetworkPanel> {
                                 },
                                 child: ListView.builder(
                                   controller: _scrollController,
-                                  // ignore: deprecated_member_use
-                                  cacheExtent: 500,
                                   itemCount: filtered.length,
                                   padding: const EdgeInsets.only(bottom: 24),
                                   itemBuilder: (context, index) {
@@ -469,8 +473,13 @@ class _NetworkPanelState extends State<NetworkPanel> {
                                 ),
                               ),
                               // ── Scroll-to-top FAB ──
-                              if (_showScrollToTop)
-                                Positioned(
+                              ValueListenableBuilder<bool>(
+                                valueListenable: _showScrollToTop,
+                                builder: (context, show, child) {
+                                  if (!show) return const SizedBox.shrink();
+                                  return child!;
+                                },
+                                child: Positioned(
                                   right: 12,
                                   bottom: 12,
                                   child: GestureDetector(
@@ -481,32 +490,28 @@ class _NetworkPanelState extends State<NetworkPanel> {
                                               const Duration(milliseconds: 400),
                                           curve: Curves.easeOutCubic);
                                     },
-                                    child: AnimatedOpacity(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      opacity: _showScrollToTop ? 1.0 : 0.0,
-                                      child: Container(
-                                        width: 36,
-                                        height: 36,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF6C63FF)
-                                              .withValues(alpha: 0.85),
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: const Color(0xFF6C63FF)
-                                                  .withValues(alpha: 0.3),
-                                              blurRadius: 12,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(Icons.arrow_upward,
-                                            color: Colors.white, size: 18),
+                                    child: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6C63FF)
+                                            .withValues(alpha: 0.85),
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF6C63FF)
+                                                .withValues(alpha: 0.3),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                       ),
+                                      child: const Icon(Icons.arrow_upward,
+                                          color: Colors.white, size: 18),
                                     ),
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         ),

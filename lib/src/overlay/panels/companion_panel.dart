@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../blackbox.dart';
 import '../../companion/firebase_streamer.dart';
 import '../widgets/blackbox_theme.dart';
+import '../widgets/blackbox_toast.dart';
 
 class CompanionPanel extends StatefulWidget {
   const CompanionPanel({super.key});
@@ -14,13 +17,26 @@ class CompanionPanel extends StatefulWidget {
 
 class _CompanionPanelState extends State<CompanionPanel> {
   bool _isLinkCopied = false;
+  Timer? _linkCopiedTimer;
+  late final VoidCallback _connectionLostCallback;
 
   @override
   void initState() {
     super.initState();
-    FirebaseStreamer.instance.onConnectionLost = () {
+    _connectionLostCallback = () {
       if (mounted) setState(() {});
     };
+    FirebaseStreamer.instance.onConnectionLost = _connectionLostCallback;
+  }
+
+  @override
+  void dispose() {
+    _linkCopiedTimer?.cancel();
+    if (identical(
+        FirebaseStreamer.instance.onConnectionLost, _connectionLostCallback)) {
+      FirebaseStreamer.instance.onConnectionLost = null;
+    }
+    super.dispose();
   }
 
   void _showErrorDialog(BuildContext context, String message) {
@@ -138,13 +154,43 @@ class _CompanionPanelState extends State<CompanionPanel> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: SelectableText(
-                          'flutter-blackbox-companion.web.app',
-                          style:
-                              TextStyle(color: theme.accentColor, fontSize: 13),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: () => _launchCompanionUrl(
+                            context,
+                            'https://flutter-blackbox-companion.web.app',
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            child: Text(
+                              'flutter-blackbox-companion.web.app',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.accentColor,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () => _launchCompanionUrl(
+                          context,
+                          'https://flutter-blackbox-companion.web.app',
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: Icon(
+                            Icons.open_in_new_rounded,
+                            size: 16,
+                            color: theme.accentColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(4),
                         onTap: () {
                           Clipboard.setData(const ClipboardData(
                               text:
@@ -152,7 +198,9 @@ class _CompanionPanelState extends State<CompanionPanel> {
                           setState(() {
                             _isLinkCopied = true;
                           });
-                          Future.delayed(const Duration(seconds: 2), () {
+                          _linkCopiedTimer?.cancel();
+                          _linkCopiedTimer =
+                              Timer(const Duration(seconds: 2), () {
                             if (mounted) {
                               setState(() {
                                 _isLinkCopied = false;
@@ -204,13 +252,86 @@ class _CompanionPanelState extends State<CompanionPanel> {
           ),
         ),
         Expanded(
-          child: Center(
-            child: Text(
-              isStreaming
-                  ? 'Streaming data to your Mac in real-time.\nLogs, network, crashes, and navigation are all being sent.'
-                  : 'Stream your logs and network requests to your Mac in real-time.\nOpen the website and enter the connection code to begin.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textSecondary),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              children: [
+                Text(
+                  isStreaming
+                      ? 'Streaming data to your Mac in real-time.\nLogs, network, crashes, and navigation are all being sent.'
+                      : 'Stream your logs and network requests to your Mac in real-time.\nOpen the website and enter the connection code to begin.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                const SizedBox(height: 32),
+                // ── Support BlackBox section ──────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.cardBackground,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: theme.accentColor.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.favorite_rounded,
+                            color: const Color(0xFFF472B6),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Support BlackBox',
+                            style: TextStyle(
+                              color: theme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'BlackBox is free & open-source. Your support helps keep it maintained and growing!',
+                        style: TextStyle(
+                          color: theme.textSecondary,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SupportButton(
+                              icon: Icons.favorite_rounded,
+                              label: 'Support (UPI)',
+                              color: const Color(0xFFF472B6),
+                              url:
+                                  'https://flutter-blackbox-companion.web.app/support',
+                              theme: theme,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _SupportButton(
+                              icon: Icons.person_rounded,
+                              label: 'Portfolio',
+                              color: const Color(0xFF38BDF8),
+                              url: 'https://jaimin-raval-portfolio.web.app/',
+                              theme: theme,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -588,28 +709,16 @@ class _DigitBox extends StatefulWidget {
 }
 
 class _DigitBoxState extends State<_DigitBox> {
-  late final FocusNode _wrapperFocusNode;
-
-  @override
-  void initState() {
-    super.initState();
-    _wrapperFocusNode = FocusNode();
-  }
-
-  @override
-  void dispose() {
-    _wrapperFocusNode.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 42,
       height: 52,
-      child: KeyboardListener(
-        focusNode: _wrapperFocusNode,
-        onKeyEvent: widget.onKeyEvent,
+      child: Focus(
+        onKeyEvent: (node, event) {
+          widget.onKeyEvent(event);
+          return KeyEventResult.ignored;
+        },
         child: AnimatedBuilder(
           animation: widget.focusNode,
           builder: (context, _) {
@@ -666,6 +775,96 @@ class _DigitBoxState extends State<_DigitBox> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// URL Launcher with Clipboard Fallback
+// ─────────────────────────────────────────────────────────────────────────────
+
+Future<void> _launchCompanionUrl(BuildContext context, String urlString) async {
+  try {
+    final uri = Uri.parse(urlString);
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && context.mounted) {
+      _fallbackCopyUrl(context, urlString);
+    }
+  } catch (_) {
+    if (context.mounted) {
+      _fallbackCopyUrl(context, urlString);
+    }
+  }
+}
+
+void _fallbackCopyUrl(BuildContext context, String urlString) {
+  Clipboard.setData(ClipboardData(text: urlString));
+  BlackBoxToast.show(context, 'Link copied: $urlString');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Support Button (opens URL in external browser with clipboard copy fallback)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SupportButton extends StatelessWidget {
+  const _SupportButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.url,
+    required this.theme,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final String url;
+  final BlackBoxThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _launchCompanionUrl(context, url),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.open_in_new_rounded,
+                size: 13,
+                color: color.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
         ),
       ),
     );

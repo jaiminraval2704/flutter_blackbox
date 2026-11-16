@@ -58,11 +58,19 @@ class TapEvent extends JourneyEvent {
       };
 }
 
+/// Represents an API call event in the user journey.
 class ApiEvent extends JourneyEvent {
+  /// Creates an [ApiEvent] with the given [timestamp], [method], [url], and [statusCode].
   ApiEvent(super.timestamp,
       {required this.method, required this.url, required this.statusCode});
+
+  /// The HTTP method used for the API call (e.g., GET, POST).
   final String method;
+
+  /// The URL of the API call.
   final String url;
+
+  /// The HTTP status code returned by the API call.
   final int statusCode;
 
   @override

@@ -59,6 +59,20 @@ class _RebuildPanelState extends State<RebuildPanel> {
                     ? BlackBoxColors.warning
                     : BlackBoxColors.success,
               ),
+              const SizedBox(width: 8),
+              _StatChip(
+                label: '/sec',
+                value: BlackBox.instance.rebuildStore.trackingDuration
+                            .inMilliseconds >
+                        0
+                    ? (totalRebuilds /
+                            BlackBox.instance.rebuildStore.trackingDuration
+                                .inMilliseconds *
+                            1000)
+                        .toStringAsFixed(1)
+                    : '–',
+                color: Colors.white54,
+              ),
               const Spacer(),
               // ── Auto-track toggle ───────────────────────────────
               GestureDetector(
@@ -265,7 +279,7 @@ class _RebuildTile extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  widgetName,
+                  '${rank <= 3 ? "🔥 " : ""}$widgetName',
                   style: const TextStyle(
                       fontSize: 11,
                       color: Colors.white70,

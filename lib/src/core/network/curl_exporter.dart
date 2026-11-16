@@ -35,8 +35,16 @@ class CurlExporter {
 
     // Body
     if (req.body != null) {
-      final bodyStr =
-          req.body is String ? req.body as String : jsonEncode(req.body);
+      String bodyStr;
+      if (req.body is String) {
+        bodyStr = req.body as String;
+      } else {
+        try {
+          bodyStr = jsonEncode(req.body);
+        } catch (_) {
+          bodyStr = req.body.toString();
+        }
+      }
       buffer.write(" \\\n  -d '${_escapeShell(bodyStr)}'");
     }
 
