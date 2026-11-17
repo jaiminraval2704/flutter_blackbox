@@ -20,13 +20,15 @@ jobs:
           cache: true
       
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          cd example && flutter pub get && cd ..
       
       - name: Check formatting
         run: dart format --set-exit-if-changed .
       
       - name: Run static analysis
-        run: dart analyze --fatal-infos
+        run: flutter analyze --fatal-infos
       
       - name: Run tests
         run: flutter test --coverage
@@ -34,4 +36,4 @@ jobs:
       - name: Check pub.dev score
         run: |
           dart pub global activate pana
-          pana --no-warning --exit-code-threshold 110
+          dart pub global run pana --exit-code-threshold 110 .
