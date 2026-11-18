@@ -1,6 +1,6 @@
 name: flutter_blackbox
 description: All-in-one Flutter debug overlay and live remote web dashboard. Inspect network, logs, crashes, and performance natively on-device or remotely via a browser.
-version: 0.8.0
+version: 0.8.1
 homepage: https://github.com/jaiminraval2704/flutter_blackbox
 repository: https://github.com/jaiminraval2704/flutter_blackbox
 issue_tracker: https://github.com/jaiminraval2704/flutter_blackbox/issues

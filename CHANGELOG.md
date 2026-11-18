@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.1] - 2026-11-18
+
+### Fixed
+- Fixed pub.dev static analysis warnings on Flutter >= 3.47 by configuring `analysis_options.yaml` to ignore `deprecated_member_use` diagnostics caused by Flutter framework package decoupling.
+- Cleaned up internal imports in `RebuildTracker` and `BlackBoxColors` to depend directly on `package:flutter/widgets.dart` and `package:flutter/painting.dart`.
+
 ## [0.8.0] - 2026-09-02
 
 ### Added
